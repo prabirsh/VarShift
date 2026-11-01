@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from .advanced import ALIAS, DATABASES
 from .builds import BUILDS, HG19, HG38, is_mitochondrial, key_contig, parse_build
 from .consequence import UPSTREAM_DISTANCE, SequenceCache, TranscriptEffect, annotate as effect_on, hgvs_g
 from .errors import DataError, InputError
 from .inputs import ParsedInput, parse_input
 from .links import build_links
+from .priority import assign as assign_priority
 from .liftover import LiftResult, lift
 from .resolver import Candidate, Resolver
 from .store import DataStore
@@ -23,21 +25,27 @@ class Annotator:
         self.omitted_transcripts = 0
         self.resolver = Resolver(store)
         self._sequences: dict[str, SequenceCache] = {}
+        installed = store.installed()
+        self._installed_advanced = [
+            database
+            for database in DATABASES.values()
+            if database.access != ALIAS and any(a == database.name or a.startswith(f"{database.name}.") for a in installed)
+        ]
 
     def _pick_build(self, parsed: ParsedInput, build: str | None) -> str:
         installed = self.store.builds
         if build:
             build = parse_build(build)
             if parsed.build_hint and parsed.build_hint != build:
-                raise InputError(f"{parsed.contig} belongs to {parsed.build_hint}, but --build says {build}")
+                raise InputError(f"{parsed.contig} belongs to {parsed.build_hint}, but build= says {build}")
         elif parsed.build_hint:
             build = parsed.build_hint
         elif parsed.kind in ("position", "genomic"):
-            raise InputError("a genomic position needs a build; add --build hg19 or --build hg38")
+            raise InputError("a genomic position needs a build; add build=hg19 or build=hg38")
         else:
             build = HG38 if HG38 in installed else (installed[0] if installed else None)
         if build not in installed:
-            raise DataError(f"{build} data is not installed here; run: varsight setup --build {build}")
+            raise DataError(f"{build} data is not installed here; run: varsight setup build={build}")
         return build
 
     def annotate_text(self, text: str, build: str | None = None, gene: str = "") -> list[dict]:
@@ -128,6 +136,7 @@ class Annotator:
             "flags": flags,
         }
         record["links"] = build_links(_link_values(variant, record, clinvar_row))
+        record["priority"] = assign_priority(record)
         return record
 
     # steps
@@ -290,18 +299,105 @@ class Annotator:
         )
         evidence["gene_diseases"] = sorted({d["disease_id"] for d in self.store.gene_rows("gene_diseases", symbol)})
 
-        evidence["alphamissense"] = None
-        evidence["gnomad"] = None
-        for lookup, key in ((self.store.alphamissense, "alphamissense"), (self.store.gnomad, "gnomad")):
-            for candidate in (variant, lifted):
-                if candidate is None:
-                    continue
-                hit = lookup(candidate.build, candidate.contig, candidate.pos, candidate.ref, candidate.alt)
-                if hit is not None:
-                    evidence[key] = {name: hit[name] for name in hit.keys() if name not in ("contig", "pos", "ref", "alt")}
-                    evidence[key]["matched_on"] = candidate.build
-                    break
+        evidence["advanced"] = self._advanced(variant, lifted, symbol, chosen, row)
+        dbsnp = evidence["advanced"].get("dbsnp") or {}
+        if not evidence["dbsnp"] and dbsnp.get("rsid"):
+            evidence["dbsnp"] = f"rs{dbsnp['rsid']}"
         return evidence
+
+    def _advanced(self, variant, lifted, symbol, chosen, clinvar_row) -> dict:
+        """Look up each advanced database installed here. The core results don't depend on any of them."""
+        found: dict = {}
+        for database in self._installed_advanced:
+            if database.level == "variant":
+                found[database.name] = self._advanced_variant(database, variant, lifted)
+            elif database.level == "position":
+                found[database.name] = self._advanced_position(variant, lifted)
+            elif database.level == "region":
+                found[database.name] = self._advanced_region(variant)
+            elif database.level == "residue":
+                found[database.name] = self._advanced_residue(symbol, chosen)
+            elif database.level == "clinvar_id":
+                hit = self.store.advanced_clingen(clinvar_row["variation_id"]) if clinvar_row is not None else None
+                found[database.name] = {key: hit[key] for key in hit.keys()} if hit else {"status": "not_found"}
+            else:
+                found[database.name] = self._advanced_gene(database.name, symbol)
+        return found
+
+    def _advanced_variant(self, database, variant, lifted) -> dict:
+        for candidate in (variant, lifted):
+            if candidate is None:
+                continue
+            hit = self.store.advanced_variant(database.name, candidate.build, candidate.contig, candidate.pos, candidate.ref, candidate.alt)
+            if hit is not None:
+                values = {key: hit[key] for key in hit.keys() if key not in ("contig", "pos", "ref", "alt")}
+                return {"status": "found", "matched_on": candidate.build, **values}
+        return {"status": "not_found"}
+
+    def _advanced_position(self, variant, lifted) -> dict:
+        for candidate in (variant, lifted):
+            if candidate is None or candidate.contig == "chrMT":
+                continue
+            start, _, _ = candidate.edit()
+            value = self.store.phylop(candidate.build, candidate.contig, start)
+            if value is not None:
+                return {"status": "found", "value": round(value, 3), "matched_on": candidate.build}
+        return {"status": "not_found"}
+
+    def _advanced_region(self, variant) -> dict:
+        rows = self.store.advanced_sv(variant.build, variant.contig, variant.pos)
+        if not rows:
+            return {"status": "not_found", "count": 0}
+        top = rows[0]
+        return {"status": "found", "count": len(rows), "top": f"{top['sv_type']} {top['sv_id']} AF {top['af']}"}
+
+    def _advanced_residue(self, symbol, chosen) -> dict:
+        if not (symbol and chosen and chosen.aa_position and chosen.protein_short):
+            return {"status": "not_found"}
+        in_frame = any(term.startswith("inframe_") for term in chosen.terms)
+        for hit in self.store.advanced_hotspots(symbol, chosen.aa_position):
+            indel_region = hit["type"] == "in-frame indel"
+            if indel_region and not in_frame:
+                continue
+            # The list uses its own transcripts, so a single residue only counts when its letter agrees.
+            if not indel_region and (hit["residue"] or "")[:1] != chosen.protein_short[0]:
+                continue
+            kind = " in-frame indels" if indel_region else ""
+            return {
+                "status": "found",
+                "label": f"{symbol} {hit['residue']}{kind}: {hit['tumor_count']} tumours",
+                "tumor_count": hit["tumor_count"],
+                "variants": hit["variants"],
+            }
+        return {"status": "not_found"}
+
+    def _advanced_gene(self, name: str, symbol: str) -> dict:
+        if not symbol:
+            return {"status": "not_found"}
+        if name == "decipher":
+            gene = self.store.advanced_gene("decipher", "genes", symbol)
+            panel = self.store.advanced_gene("decipher", "ddg2p", symbol)
+            if not gene and not panel:
+                return {"status": "not_found"}
+            return {
+                "status": "found",
+                "hi_percent": gene[0]["hi_percent"] if gene else None,
+                "ddg2p": "; ".join(f"{row['disease']} ({row['inheritance']}, {row['confidence']})" for row in panel) or None,
+            }
+        if name == "cosmic_census":
+            rows = self.store.advanced_gene(name, "genes", symbol)
+            if not rows:
+                return {"status": "not_found"}
+            return {"status": "found", "tier": rows[0]["tier"], "role": rows[0]["role"], "tumour_types": rows[0]["tumour_types"]}
+        if name == "cosmic_fusions":
+            rows = sorted(self.store.advanced_gene(name, "fusions", symbol), key=lambda row: -row["samples"])
+            if not rows:
+                return {"status": "not_found"}
+            return {"status": "found", "partners": "; ".join(f"{row['partner']} ({row['samples']})" for row in rows[:8])}
+        rows = self.store.advanced_gene(name, "genes", symbol)
+        if not rows:
+            return {"status": "not_found"}
+        return {"status": "found", "mim": rows[0]["mim"], "phenotypes": "; ".join(row["phenotypes"] for row in rows if row["phenotypes"]) or None}
 
 
 def _pretty(value) -> str | None:
@@ -343,7 +439,7 @@ def _link_values(variant: Variant, record: dict, clinvar_row) -> dict:
         "gene": symbol,
         "protein_short": short,
         "clinvar_id": clinvar_row["variation_id"] if clinvar_row is not None else None,
-        "rsid": clinvar_row["rsid"] if clinvar_row is not None else None,
+        "rsid": (record["evidence"].get("dbsnp") or "").removeprefix("rs") or None,
         "ncbi_gene": gene["ncbi_gene"],
         "hgnc_id": gene["hgnc"],
         "ensembl_gene": gene["ensembl"],

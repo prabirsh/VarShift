@@ -227,23 +227,71 @@ class FileRuns(WithData):
     def _cli(self, *args):
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = main(list(args) + ["--data-dir", str(self.data)]) if args[0] != "demo" else main(list(args))
+            code = main(list(args) + [f"data={self.data}"]) if args[0] != "demo" else main(list(args))
         return code, stdout.getvalue(), stderr.getvalue()
 
     def test_single_variant_prints_json(self):
-        code, out, _ = self._cli("annotate", "BRAF V600E", "--build", "hg19")
+        code, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "format=json")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)[0]["evidence"]["clinvar"]["id"], 13961)
 
+    def test_single_variant_prints_a_card_by_default(self):
+        code, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19")
+        self.assertEqual(code, 0)
+        for expected in ("Priority    High", "NM_004333", "13961", "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"):
+            self.assertIn(expected, out)
+
+    def test_dashes_typed_out_of_habit_still_work(self):
+        code, out, _ = self._cli("annotate", "BRAF V600E", "-build", "hg19", "-format=json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)[0]["input"]["build"], "hg19")
+
+    def test_file_input_gets_a_folder_with_every_report(self):
+        folder = self.root / "reports"
+        code, _, err = self._cli("annotate", str(self.vcf), f"out={folder}")
+        self.assertEqual(code, 0, err)
+        for name in ("report.html", "results.xlsx", "results.tsv"):
+            self.assertTrue((folder / name).is_file(), name)
+        self.assertIn(str(folder / "report.html"), err)
+        self.assertEqual(list(folder.glob("*.incomplete")), [])
+
+    def test_existing_output_needs_the_word_replace(self):
+        target = self.root / "out.tsv"
+        target.write_text("keep me")
+        code, _, err = self._cli("annotate", str(self.vcf), f"out={target}")
+        self.assertEqual(code, 1)
+        self.assertIn("replace", err)
+        self.assertEqual(target.read_text(), "keep me")
+        self.assertEqual(self._cli("annotate", str(self.vcf), f"out={target}", "replace")[0], 0)
+
+    def test_workers_give_exactly_the_same_file_in_the_same_order(self):
+        one, many = self.root / "one.tsv", self.root / "many.tsv"
+        self.assertEqual(self._cli("annotate", str(self.vcf), f"out={one}", "workers=1")[0], 0)
+        code, _, err = self._cli("annotate", str(self.vcf), f"out={many}", "workers=2")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(one.read_text(encoding="utf-8"), many.read_text(encoding="utf-8"))
+
+    def test_a_large_file_is_split_across_chunks_and_stays_in_order(self):
+        lines = self.vcf.read_text(encoding="utf-8").splitlines(keepends=True)
+        header = [line for line in lines if line.startswith("#")]
+        records = [line for line in lines if not line.startswith("#")]
+        large = self.root / "large.vcf"
+        large.write_text("".join(header + records * 40), encoding="utf-8", newline="\n")
+        one, many = self.root / "one.tsv", self.root / "many.tsv"
+        self.assertEqual(self._cli("annotate", str(large), f"out={one}", "workers=1")[0], 0)
+        code, _, err = self._cli("annotate", str(large), f"out={many}", "workers=2")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(one.read_text(encoding="utf-8"), many.read_text(encoding="utf-8"))
+
     def test_error_gives_exit_code_and_message(self):
-        code, _, err = self._cli("annotate", "BRAF W600E", "--build", "hg19")
+        code, _, err = self._cli("annotate", "BRAF W600E", "build=hg19")
         self.assertEqual(code, 1)
         self.assertIn("no transcript fits", err)
         self.assertIn("tried", err)
 
     def test_vcf_keeps_columns_and_reports_bad_lines(self):
         target = self.root / "out.tsv"
-        code, _, err = self._cli("annotate", str(self.vcf), "--out", str(target))
+        code, _, err = self._cli("annotate", str(self.vcf), f"out={target}")
         self.assertEqual(code, 0, err)
         lines = target.read_text(encoding="utf-8").splitlines()
         header = lines[0].split("\t")
@@ -256,13 +304,13 @@ class FileRuns(WithData):
         self.assertTrue(any("split_from_multiallelic" in r["flags"] for r in rows))
 
     def test_vcf_build_comes_from_the_header_and_a_contradiction_stops(self):
-        code, _, err = self._cli("annotate", str(self.vcf), "--build", "hg38", "--out", str(self.root / "x.tsv"))
+        code, _, err = self._cli("annotate", str(self.vcf), "build=hg38", f"out={self.root / 'x.tsv'}")
         self.assertEqual(code, 1)
         self.assertIn("wrong build", err)
 
     def test_excel_output_opens_as_a_valid_workbook(self):
         target = self.root / "out.xlsx"
-        code, _, err = self._cli("annotate", str(self.vcf), "--out", str(target))
+        code, _, err = self._cli("annotate", str(self.vcf), f"out={target}")
         self.assertEqual(code, 0, err)
         with zipfile.ZipFile(target) as archive:
             self.assertIsNone(archive.testzip())
@@ -272,7 +320,7 @@ class FileRuns(WithData):
         listing = self.root / "list.txt"
         listing.write_text("BRAF V600E\n# comment\n\nNOTAGENE V600E\nchr7-140453136-A-T\nTP53 R175H\n", encoding="utf-8")
         target = self.root / "out.jsonl"
-        code, _, err = self._cli("annotate", str(listing), "--build", "hg19", "--out", str(target))
+        code, _, err = self._cli("annotate", str(listing), "build=hg19", f"out={target}")
         self.assertEqual(code, 0, err)
         rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
         self.assertTrue(any(r.get("error") for r in rows))
@@ -290,14 +338,15 @@ class FileRuns(WithData):
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
     def test_vcf_results_are_private(self):
         target = self.root / "private.tsv"
-        self._cli("annotate", str(self.vcf), "--out", str(target))
+        self._cli("annotate", str(self.vcf), f"out={target}")
         self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
 
     def test_demo_command_runs(self):
-        code, out, err = self._cli("demo", "--demo-dir", str(DEMO), "--out", str(self.root / "demo"), "--force")
+        code, out, err = self._cli("demo", f"demodir={DEMO}", f"out={self.root / 'demo'}", "replace")
         self.assertEqual(code, 0, out + err)
-        self.assertTrue((self.root / "demo" / "variants.xlsx").exists())
-        self.assertTrue((self.root / "demo" / "demo.hg19.annotated.tsv").exists())
+        for folder in ("variants", "demo.hg19"):
+            for name in ("report.html", "results.xlsx", "results.tsv"):
+                self.assertTrue((self.root / "demo" / folder / name).exists(), f"{folder}/{name}")
 
 
 if __name__ == "__main__":

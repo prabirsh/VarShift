@@ -1,0 +1,172 @@
+[
+ {
+  "hugoSymbol": "NRAS",
+  "residue": "Q61",
+  "tumorTypeCount": null,
+  "tumorCount": 422,
+  "transcriptId": "ENST00000369535",
+  "aminoAcidPosition": {
+   "start": 61,
+   "end": 61
+  },
+  "qValue": "0",
+  "qValuePancan": "0",
+  "qValueCancerType": "0",
+  "type": "single residue",
+  "tumorTypeComposition": {
+   "thymus": 3,
+   "biliary_tract": 5,
+   "liver": 1,
+   "adrenal_gland": 1,
+   "skin": 187,
+   "bowel": 35,
+   "stomach": 3,
+   "bone": 1,
+   "testis": 9,
+   "brain": 6,
+   "blood": 37,
+   "head_neck": 3,
+   "lung": 17,
+   "kidney": 1,
+   "ovary": 5,
+   "unk": 11,
+   "uterus": 5,
+   "thyroid": 71,
+   "pancreas": 2,
+   "bladder": 8,
+   "soft_tissue": 11
+  },
+  "variantAminoAcid": {
+   "P": 2,
+   "R": 204,
+   "H": 27,
+   "*": 1,
+   "K": 142,
+   "L": 46
+  }
+ },
+ {
+  "hugoSymbol": "PIK3CA",
+  "residue": "E545",
+  "tumorTypeCount": null,
+  "tumorCount": 633,
+  "transcriptId": "ENST00000263967",
+  "aminoAcidPosition": {
+   "start": 545,
+   "end": 545
+  },
+  "qValue": "0",
+  "qValuePancan": "0",
+  "qValueCancerType": "0",
+  "type": "single residue",
+  "tumorTypeComposition": {
+   "cervix": 34,
+   "biliary_tract": 8,
+   "liver": 1,
+   "bowel": 97,
+   "skin": 7,
+   "stomach": 35,
+   "testis": 2,
+   "brain": 22,
+   "head_neck": 48,
+   "vulva": 1,
+   "lung": 51,
+   "kidney": 8,
+   "ovary": 5,
+   "uterus": 30,
+   "unk": 1,
+   "thyroid": 3,
+   "pancreas": 5,
+   "bladder": 90,
+   "prostate": 8,
+   "penis": 3,
+   "breast": 174
+  },
+  "variantAminoAcid": {
+   "Q": 20,
+   "A": 12,
+   "D": 5,
+   "G": 21,
+   "K": 575
+  }
+ },
+ {
+  "hugoSymbol": "IDH1",
+  "residue": "R132",
+  "tumorTypeCount": null,
+  "tumorCount": 766,
+  "transcriptId": "ENST00000345146",
+  "aminoAcidPosition": {
+   "start": 132,
+   "end": 132
+  },
+  "qValue": "0",
+  "qValuePancan": "0",
+  "qValueCancerType": "0",
+  "type": "single residue",
+  "tumorTypeComposition": {
+   "thymus": 1,
+   "biliary_tract": 57,
+   "liver": 4,
+   "adrenal_gland": 1,
+   "skin": 25,
+   "bowel": 5,
+   "bone": 6,
+   "brain": 612,
+   "blood": 23,
+   "head_neck": 2,
+   "lung": 8,
+   "unk": 2,
+   "thyroid": 1,
+   "pancreas": 2,
+   "bladder": 2,
+   "prostate": 11,
+   "soft_tissue": 2,
+   "breast": 2
+  },
+  "variantAminoAcid": {
+   "C": 139,
+   "S": 16,
+   "G": 28,
+   "H": 570,
+   "I": 1,
+   "L": 12
+  }
+ },
+ {
+  "hugoSymbol": "BRAF",
+  "residue": "592-604",
+  "tumorCount": 8,
+  "aminoAcidPosition": {
+   "start": 592,
+   "end": 604
+  },
+  "qValue": "0",
+  "type": "in-frame indel",
+  "variantAminoAcid": {
+   "I592_A598dup": 1,
+   "K601_W604del": 1,
+   "T599dup": 3,
+   "V600_K601delinsE": 2
+  }
+ },
+ {
+  "hugoSymbol": "BRAF",
+  "residue": "V600",
+  "tumorCount": 897,
+  "aminoAcidPosition": {
+   "start": 600,
+   "end": 600
+  },
+  "qValue": "0",
+  "type": "single residue",
+  "variantAminoAcid": {
+   "E": 833,
+   "G": 3,
+   "K": 24,
+   "M": 29,
+   "R": 4,
+   "V": 4
+  }
+ }
+]

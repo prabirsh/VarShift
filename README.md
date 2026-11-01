@@ -1,228 +1,214 @@
 # VarSight
 
-[![CI](https://github.com/YOUR-USERNAME/VarSight/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR-USERNAME/VarSight/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/YOUR-USERNAME/VarSight/actions/workflows/codeql.yml/badge.svg)](https://github.com/YOUR-USERNAME/VarSight/actions/workflows/codeql.yml)
+[![CI](https://github.com/prabirsh/VarSight/actions/workflows/ci.yml/badge.svg)](https://github.com/prabirsh/VarSight/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/prabirsh/VarSight/actions/workflows/codeql.yml/badge.svg)](https://github.com/prabirsh/VarSight/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Offline variant annotation for hg19 and hg38.** Give it a protein change, a cDNA change, a genomic position or a whole VCF. It returns the variant on both builds, HGVS names, its effect, what each database says, and a reference link for each database so you can check the result yourself.
+**Offline variant annotation for hg19 and hg38, on Ubuntu, WSL, PowerShell and Command Prompt.** Give it a protein change, a cDNA change, a genomic position or a whole VCF. It returns the variant on both builds, HGVS names, its effect, what each database says, a review priority with its reasons, and a link to check each database yourself.
 
-```text
-$ varsight annotate "BRAF V600E" --build hg19 --format tsv
-
-hg19 chr7-140453136-A-T   hg38 chr7-140753336-A-T   BRAF   NM_004333.6:c.1799T>A   NP_004324.2:p.Val600Glu
-missense_variant   ClinVar 13961: Conflicting classifications of pathogenicity   + 20 reference links
-```
-
-- **Runs on your computer.** Annotation makes no network connection, so patient variants stay local.
-- **Free, with nothing to install but Python.** No API keys, no accounts, no pip packages, no sudo.
-- **Quick.** About 3 to 5 ms for one variant and 10 to 15 s for a VCF of about 3,400 records, using about 150 MB of memory ([measured on a 12-gene sample](docs/validation.md#speed-and-memory)).
-- **Reports, doesn't judge.** Each source's statement is shown as it stands, with its version. VarSight gives no verdict of its own, and missing data is never treated as benign.
+![Checking one variant by hand means many websites, while one VarSight command reports on a whole VCF](docs/assets/how-varsight-helps.svg)
 
 > [!IMPORTANT]
-> VarSight is research software. Results for patient care must be checked against the linked sources and validated by your laboratory. See [what has and hasn't been proven](#how-far-it-has-been-tested).
+> VarSight is research software. Results for patient care must be checked against the linked sources and validated by your laboratory. See [how far it has been tested](#how-far-it-has-been-tested).
+
+## The problem, and how this helps
+
+| What people face | Why | What you get |
+| - | - | - |
+| One variant, many websites | Each database has its own search and naming | One result with a labelled link per database |
+| The same variant, different names | Three major tools agreed on the c. name for only 58.52% of 164,549 ClinVar variants ([Human Genomics 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/)) | Names measured against ClinVar's, ClinVar's own names alongside, and every candidate for a p. name |
+| Patient data leaving the building | A web search sends the variant to that site | Annotation has no network code, and a test enforces it |
+| hg19 and hg38 mixed up | A wrong-build VCF can look fine | The build is read from the VCF itself, a contradiction stops the run, and both positions are shown |
+| Thousands of rows and no starting point | A VCF doesn't say what to read first | Results sorted by priority, each with its reason. It sorts only, and is not a classification |
+| Stale data nobody notices | Local databases age quietly | A notice when a newer version exists, which never slows the run |
+| Hard installs | Common tools need a runtime and a large cache | Only Python: no pip packages, no administrator rights, no API keys |
+
+[The research behind this, with sources and a comparison of other tools](docs/research.md).
 
 ## Quick start
 
-You need Python 3.10 or newer on Linux or WSL. [Step-by-step guide for Windows with WSL](docs/wsl-guide.md).
+**Ubuntu or WSL:**
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/VarSight.git
+git clone https://github.com/prabirsh/VarSight.git
 cd VarSight
-./install.sh
+sh install.sh
 ```
 
-That installs the `varsight` command and runs the [demo](demo/README.md), with no download: real data for 12 genes is included in the repository.
+**Windows PowerShell** (or `install.bat` in Command Prompt), with Python from python.org:
 
-To annotate any variant, download and build the full data once. This transfers about 8 GB:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+This installs the `varsight` command and runs the [demo](demo/README.md) with no download. Then choose your databases. Setup asks whether you want hg19, hg38 or both, and downloads only that:
 
 ```bash
-varsight setup --data-dir ~/varsight-data
+varsight setup
 ```
-
-Then:
 
 ```bash
-varsight annotate "BRAF V600E" --build hg19
-varsight annotate sample.vcf.gz --out results.xlsx
+varsight annotate "BRAF V600E" build=hg19
+varsight annotate sample.vcf.gz
 ```
+
+**[The full guide for each system](docs/run-guide.md)** covers every step and common problems.
 
 ## Input
 
-| You have | Example | Build needed? |
-|---|---|---|
-| Protein change | `BRAF V600E`, `BRAF p.Val600Glu`, `NP_004324.2:p.Val600Glu`, `EGFR E746_A750del`, `BRCA1 E23fs` | Optional; hg38 is used if installed |
-| cDNA change | `NM_004333.6:c.1799T>A`, `BRAF c.1799T>A`, `NM_004333.6(BRAF):c.1799T>A (p.Val600Glu)`, `NM_000059.4:c.3901ACT[1]` | Optional |
-| Genomic HGVS | `NC_000007.13:g.140453136A>T`, `chr7:g.140453136A>T`, `NC_012920.1:m.3243A>G` | Not with a RefSeq accession; otherwise `--build` |
-| Position | `chr7-140453136-A-T`, `7:140453136:A>T`, `chr7:140453136 A>T` | `--build` |
-| dbSNP number | `rs113488022`, looked up through ClinVar | Optional |
-| A list | A text file with one of the above per line | As above |
-| A VCF | `.vcf`, `.vcf.gz` or `.vcf.bgz` | Read from the contig lengths in the header |
+**Always put a variant in quotes,** because of the `>`.
 
-One protein change can come from several DNA changes, so a p. input usually returns several ranked candidates. Those known to ClinVar come first, then those changing the fewest bases.
+| You have | Example | Build needed? |
+| - | - | - |
+| Protein change | `BRAF V600E`, `NP_004324.2:p.Val600Glu`, `EGFR E746_A750del` | Optional |
+| cDNA change | `NM_004333.6:c.1799T>A`, `BRAF c.1799T>A` | Optional |
+| Genomic HGVS | `NC_000007.13:g.140453136A>T`, `chr7:g.140453136A>T` | Not with a RefSeq accession; otherwise `build=` |
+| Position | `chr7-140453136-A-T` | `build=` |
+| dbSNP number | `rs113488022` | Optional |
+| A list | A text file with one of the above per line | As above |
+| A VCF | `.vcf`, `.vcf.gz` or `.vcf.bgz` | Read from the header |
+
+VarSight works with hg19 and hg38. hg18 is refused rather than guessed at.
 
 ## Output
 
-JSON, JSON Lines, TSV or Excel, chosen by the `--out` extension. This is one result, shortened:
+A single variant prints a card on the screen. A list or VCF gets a folder, `sample_varsight/`, with three reports:
 
-```json
-{
-  "input": {"raw": "BRAF V600E", "type": "protein", "build": "hg19"},
-  "candidate": {"rank": 1, "of": 2, "via": "protein", "in_clinvar": true},
-  "variant": {
-    "hg19": {"key": "chr7-140453136-A-T", "ref_check": "pass", "hgvs_g": "NC_000007.13:g.140453136A>T"},
-    "hg38": {"key": "chr7-140753336-A-T", "ref_check": "pass", "hgvs_g": "NC_000007.14:g.140753336A>T"}
-  },
-  "gene": {"symbol": "BRAF", "hgnc": "HGNC:1097", "ncbi_gene": "673", "ensembl": "ENSG00000157764", "omim": "164757"},
-  "transcript": {"accession": "NM_004333.6", "source": "RefSeq", "mane": "MANE Select", "strand": "-", "protein": "NP_004324.2"},
-  "hgvs": {"c": "NM_004333.6:c.1799T>A", "p": "NP_004324.2:p.Val600Glu", "protein_short": "V600E"},
-  "effect": {"type": "missense_variant", "exon": 15, "aa_position": 600},
-  "protein": {
-    "uniprot": "P15056",
-    "domains_at_residue": [{"accession": "PF07714", "name": "PK_Tyr_Ser-Thr", "start": 457, "end": 712}]
-  },
-  "evidence": {
-    "clinvar": {"status": "found", "id": 13961, "classification": "Conflicting classifications of pathogenicity", "version": "2026-10-25"},
-    "dbsnp": "rs113488022",
-    "civic": [{"variant": "V600E", "url": "https://civicdb.org/links/variants/12", "evidence_items": 94}],
-    "constraint": {"pli": 0.99995, "loeuf": 0.209, "source": "gnomAD v2.1.1"}
-  },
-  "links": [
-    {"name": "ClinVar", "label": "confirmed_id", "url": "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"},
-    {"name": "Franklin", "label": "built", "url": "https://franklin.genoox.com/clinical-db/variant/snp/chr7-140453136-A-T"}
-  ],
-  "versions": {"clinvar.hg19": "2026-10-25", "transcripts.hg19": "2022-03-12"},
-  "flags": ["multiple_candidates"]
-}
-```
+| File | For |
+| - | - |
+| `report.html` | Exploring. One file that opens with a double click, works offline and can be emailed: search, filters, sorting, and a details panel for each result |
+| `results.xlsx` | Sharing. Sheets: Summary, Priority, All results, Warnings explained, Data versions |
+| `results.tsv` | Your own scripts |
 
-For a VCF, your original columns stay in front and annotation columns follow. Every field and every warning flag is described in [docs/input-output.md](docs/input-output.md).
+![The report: counts by priority, charts that filter, and a sortable table](docs/assets/report-overview.jpg)
 
-### Reference links
+![Details for one result: why it got its priority, names to copy, and ClinVar](docs/assets/report-details.jpg)
 
-Each result has a link for ClinVar, NCBI Gene, NCBI RefSeq, dbSNP, HGNC, Ensembl, UniProt, Pfam, ProteinPaint, Franklin, COSMIC, VarSome and OncoKB, plus gnomAD, UCSC Genome Browser, ClinGen, CIViC, OMIM, cBioPortal and PubMed.
-
-Each link carries a label, so you know how far to trust it:
-
-- **`confirmed_id`**: the ID came from local data for this variant or gene.
-- **`built`**: the address was made from the variant. The page may hold nothing, so it is not evidence on its own.
-
-COSMIC, OncoKB, Franklin, VarSome and ProteinPaint are links only, because their data can't be stored locally for free. [Which links were tested, and how](docs/data-sources.md#reference-links).
+Each result links to ClinVar, NCBI Gene, NCBI RefSeq, dbSNP, HGNC, Ensembl, UniProt, Pfam, ProteinPaint, Franklin, COSMIC, VarSome and OncoKB, plus gnomAD, UCSC Genome Browser, ClinGen, CIViC, OMIM, cBioPortal and PubMed. Each link is labelled **confirmed ID** (from local data) or **built** (made from the variant, so the page may hold nothing). COSMIC, OncoKB, Franklin, VarSome and ProteinPaint are links only. [Every column and warning](docs/input-output.md).
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    P["p. BRAF V600E"] --> PARSE
-    C["c. NM_004333.6:c.1799T>A"] --> PARSE
-    G["g. chr7:g.140453136A>T"] --> PARSE
-    V["VCF, one record at a time"] --> PARSE
-
-    PARSE["1. Parse: what kind of input is this?"] -->|"p. or c."| RESOLVE["2. Resolve: place it on the genome through the transcript; keep every candidate"]
-    PARSE -->|"g. or VCF"| VERIFY
-    RESOLVE --> VERIFY["3. Verify and normalise: check REF against the genome, trim, left-align"]
-    VERIFY -->|"REF does not match"| REJECT["Rejected, showing the base actually found"]
-    VERIFY --> LIFT["4. Cross-build: map to the other build and repeat the REF check"]
-    LIFT --> EFFECT["5. Consequence: effect, exon, HGVS c. and p. for each transcript"]
-    EFFECT --> EVIDENCE["6. Evidence: look up each local database"]
-    EVIDENCE --> LINKS["7. Links: one labelled link per database"]
-    LINKS --> OUT["8. Output: JSON, TSV or Excel, with data versions and warnings"]
-
-    DB[("Local data: genomes, transcripts, ClinVar, HGNC, UniProt, Pfam, CIViC, ClinGen, gnomAD constraint, HPO")] -.-> RESOLVE
+    IN["p., c., g., rs, list or VCF"] ==> PARSE["1. Parse: what kind of input is this?"]
+    PARSE ==>|"p. or c."| RESOLVE["2. Resolve through the transcript; keep every candidate"]
+    PARSE ==>|"g. or VCF"| VERIFY
+    RESOLVE ==> VERIFY["3. Check REF against the genome, trim, left-align"]
+    VERIFY ==>|"REF differs"| REJECT["Rejected, showing the base actually found"]
+    VERIFY ==> LIFT["4. Map to the other build and check again"]
+    LIFT ==> EFFECT["5. Effect, exon, HGVS c. and p. per transcript"]
+    EFFECT ==> EVIDENCE["6. One indexed lookup per installed database"]
+    EVIDENCE ==> OUT["7. Priority, links, reports, data versions, warnings"]
+    DB[("SQLite files and reference FASTA on your disk")] -.-> RESOLVE
     DB -.-> EVIDENCE
-    OUT -.->|"Only if a person clicks"| WEB["Websites"]
 ```
 
-Every step is one small module, so you can read what it does. See [docs/architecture.md](docs/architecture.md).
+Each large download is converted once at setup into a SQLite file with an index, so annotating never scans a file or uses the network. To see every step, file and query for one variant:
 
-## Data sources
+```bash
+varsight explain "BRAF V600E" build=hg19
+```
 
-Everything is downloaded directly from its original source to your computer. This repository redistributes only a small demo subset.
+[How lookups work, step by step](docs/how-lookups-work.md).
 
-| Source | Used for | Updated by VarSight |
-|---|---|---|
-| UCSC hg19 and hg38 | Reference sequence, REF check | Once |
-| Ensembl chain files | hg19 to hg38 mapping | Once |
-| RefSeq and GENCODE | Transcripts, HGVS names | With your approval |
-| MANE | Default transcript | With your approval |
-| ClinVar | Classification, conditions, names | Weekly, automatic |
-| HGNC | Gene symbols, aliases, IDs | Weekly, automatic |
-| UniProt and Pfam | Protein domains and features at the residue | Weekly, automatic |
-| CIViC | Cancer evidence | Weekly, automatic |
-| ClinGen | Gene-disease validity, dosage sensitivity | Weekly, automatic |
-| gnomAD constraint | pLI and LOEUF per gene | Weekly check |
-| HPO | Gene-disease links | Weekly, automatic |
-| AlphaMissense (optional) | Missense predictions | Add with `--with alphamissense` |
-| gnomAD frequencies (optional) | Allele frequencies, hg19 | Add with `--with gnomad` |
+## Databases
 
-Sizes, licences and citations are in [docs/data-sources.md](docs/data-sources.md). **Check the licences against your use**, particularly if results go into paid reports.
+**Core, installed by setup:** UCSC reference, RefSeq, GENCODE, MANE, ClinVar, HGNC, UniProt, Pfam, CIViC, ClinGen gene curation, gnomAD gene constraint, HPO, and Ensembl chain files.
+
+**Advanced, your choice.** A report gains columns only for what you add:
+
+| Add it like this | Databases |
+| - | - |
+| `varsight add NAME` | `dbsnp` (brings TOPMed frequencies), `gnomad`, `thousand_genomes`, `gnomad_sv`, `phylop`, `hotspots`, `decipher`, `clingen_variants` |
+| `varsight add NAME accept` | `revel`, `alphamissense` |
+| `varsight add NAME file=PATH accept`, with your own licensed download | `cosmic`, `cosmic_census`, `cosmic_fusions`, `omim`, `spliceai`, `primateai` |
+
+`varsight databases` lists each with its size and licence. [Sizes, licences and what has been tested](docs/data-sources.md). **Check the licences against your use**, particularly if results go into paid reports.
 
 ## Keeping data current
 
+A notice appears by itself when something newer exists. Reading it is one small file, and the check runs apart from annotation, sending nothing about your variants.
+
 ```bash
-varsight data update --check    # what is new; changes nothing
-varsight data update            # apply what is safe to apply automatically
-varsight data rollback          # go back to the previous data
+varsight update check
+varsight update
+varsight rollback
 ```
 
-New data is built beside the current data, tested with known variants, and only then switched in. If anything fails, the current data stays. Transcript updates can change c. and p. names, so they wait for `--approve`.
+New data is built beside the current data, tested with known variants, and only then switched in. Transcript updates can change names, so they wait for your approval. [Details, and how to schedule it](docs/updates.md).
 
-To run it every week automatically, see [docs/updates.md](docs/updates.md).
+## Benchmarks and requirements
+
+Measured on a laptop with a 2-core i3 and 3.9 GB of memory, using gene-dense public records on the demo data. [Full tables, and published figures for other tools](docs/benchmarks.md).
+
+| Task | Result |
+| - | -: |
+| One variant | About 2 ms |
+| 3,000 records to TSV | About 12 s |
+| 30,000 records to TSV, 1 process | 156 s on WSL, 113 s on Windows |
+| 30,000 records to TSV, 4 processes | 83 s on WSL, 60 s on Windows |
+| 30,000 records to all three reports, the default | 170 s on WSL, 127 s on Windows |
+| Peak memory | Under 150 MB for one report on 3,000 records; about 500 MB for all three on 30,000 |
+
+| You choose | Download | Kept on disk (estimate) |
+| - | - | -: |
+| hg19 or hg38 | About 2.4 GB, plus 4.7 GB of Pfam read without saving | About 5 GB |
+| Both | 3.3 GB, plus 4.7 GB of Pfam read without saving | About 10 GB |
+
+You need Python 3.10 or newer on Linux, WSL, or Windows 10 and later, with about 2 GB of free memory.
 
 ## How far it has been tested
 
-These results are from real public data for 12 genes (BRAF, KRAS, NRAS, EGFR, TP53, PIK3CA, IDH1, BRCA1, BRCA2, JAK2, KIT, PTEN), using 13,724 ClinVar names per build. [Full results, and every mismatch group](docs/validation.md).
+Real public data for 12 genes, using 13,724 ClinVar names per build. [Full results and every mismatch group](docs/validation.md).
 
 | Test on hg19 | Passed | Rate |
-|---|---:|---:|
+| - | -: | -: |
 | Genome position to c. name, SNVs | 9,085 of 9,087 | 99.98% |
 | Genome position to c. name, indels | 4,022 of 4,029 | 99.83% |
 | Genome position to p. name, SNVs | 6,945 of 6,946 | 99.99% |
 | Genome position to p. name, indels | 3,617 of 3,637 | 99.45% |
-| c. name back to genome position, SNVs | 9,085 of 9,086 | 99.99% |
-| c. name back to genome position, indels | 4,026 of 4,029 | 99.93% |
-| p. name back to genome position (position among candidates) | 10,588 of 10,588 | 100% |
 | hg19 to hg38 mapping | 13,723 of 13,723 | 100% |
 
 **Not yet proven:**
 
-- **The whole genome.** These rates cover 12 well-studied genes and ClinVar's oldest records. Run `varsight validate` after setup to measure your own full data; [the guide shows how](docs/wsl-guide.md#7-measure-accuracy-on-your-own-data).
-- **The full setup.** Every source address and file format has been checked and the whole setup, update and rollback cycle passes against a local test server, but the full 8 GB download has not yet been run end to end. Its time and size figures are estimates.
-- **Other Python versions.** Tested on Python 3.14 only so far. CI covers 3.10 to 3.14 once the repository is on GitHub.
+- **The whole genome.** These rates cover 12 well-studied genes. Run `varsight validate` after setup to measure your own data.
+- **The full setup.** The whole cycle passes against a local test server, but the full download has not been run end to end, so its time and disk figures are estimates.
+- **Licensed databases.** The COSMIC, OMIM, SpliceAI and PrimateAI readers follow each provider's documented columns, without a real file. A mismatch stops with a clear message.
+- **Microsoft Excel itself.** Workbooks were checked with a separate reader, not opened in Excel.
+- **Other Python versions.** Run on Python 3.14 so far. CI covers 3.10 to 3.14 on Linux, and 3.10 and 3.14 on Windows.
 
-Other things to know:
-
-- **Not covered:** CNVs and structural variants, and effects on mitochondrial transcripts (mitochondrial variants still get positions and ClinVar).
-- **hg19 transcripts date from March 2022**, the last RefSeq release for GRCh37, so a newer transcript version may be missing. VarSight flags that.
-- **No full dbSNP.** An rs number only resolves if ClinVar has it.
+Not covered: CNVs and structural variant calling, and effects on mitochondrial transcripts.
 
 ## Commands
 
 | Command | What it does |
-|---|---|
+| - | - |
 | `varsight annotate INPUT` | Annotate a description, a list file or a VCF |
-| `varsight setup` | Download and build the data |
-| `varsight data update` | Apply new source versions |
-| `varsight data rollback` | Go back to the previous data |
-| `varsight status` | Show what is installed and how old it is |
-| `varsight doctor --verify` | Check this computer, and compare data files with their recorded checksums |
-| `varsight selftest` | Run the fixed list of known variants |
-| `varsight validate` | Measure accuracy against ClinVar's own names |
-| `varsight demo` | Run the bundled demo with no download |
+| `varsight setup` | Choose builds, then download and build the data |
+| `varsight databases` | List every database, its size and licence |
+| `varsight add NAME`, `varsight remove NAME` | Add or remove an advanced database |
+| `varsight update`, `varsight rollback` | Apply new versions, or go back |
+| `varsight status`, `varsight doctor` | What is installed, and a check of this computer |
+| `varsight explain INPUT` | Show each step, file and query |
+| `varsight selftest`, `varsight validate`, `varsight benchmark` | Known variants, accuracy, and speed |
+| `varsight demo`, `varsight config`, `varsight help` | Demo with no download, settings, and help |
 
 ## Security and privacy
 
-No runtime dependencies, no telemetry, HTTPS with a host allow-list for downloads, read-only databases, parameterised SQL, spreadsheet-formula protection, and private output files. Automated tests read the source and fail if network code appears outside the download module. [Read the details and your own responsibilities](SECURITY.md).
+No runtime dependencies, no telemetry, HTTPS with a host allow-list, read-only databases, parameterised SQL, protection against formula and script injection in reports, and private output files on Linux. Tests read the source and fail if network code appears outside the download module. [Details and your own responsibilities](SECURITY.md).
 
 ## Documentation
 
-- [Windows and WSL guide](docs/wsl-guide.md)
+- [Run guide: Ubuntu, WSL, PowerShell, Command Prompt](docs/run-guide.md)
+- [How lookups work](docs/how-lookups-work.md)
 - [Input and output reference](docs/input-output.md)
-- [Architecture](docs/architecture.md)
 - [Data sources, licences and links](docs/data-sources.md)
-- [Weekly updates](docs/updates.md)
+- [Updates](docs/updates.md)
+- [Benchmarks and requirements](docs/benchmarks.md)
 - [Validation](docs/validation.md)
-- [Security](SECURITY.md)
-- [Contributing](CONTRIBUTING.md)
+- [Research and other tools](docs/research.md)
+- [Architecture](docs/architecture.md)
+- [Security](SECURITY.md) and [Contributing](CONTRIBUTING.md)
 
 ## Citing and licence
 

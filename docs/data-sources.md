@@ -1,16 +1,18 @@
 # Data sources, licences and links
 
-Every file comes directly from its original source to your computer during `varsight setup`. The list that controls this is [`src/varsight/data/sources.json`](../src/varsight/data/sources.json).
+Every file comes directly from its original source to your computer. The list that controls this is [`src/varsight/data/sources.json`](../src/varsight/data/sources.json). This repository redistributes only a small demo subset.
 
 Sizes and dates were read from each server on 1 November 2026, using header requests.
 
 > [!WARNING]
 > The licence notes below summarise what each source says. They aren't legal advice. **Check them against your own use**, particularly if results go into paid reports.
 
-## Installed by default
+## Core databases
+
+`varsight setup` installs these. You choose hg19, hg38 or both, and only the files for your choice are downloaded.
 
 | Source | Used for | Download | Last changed | Update policy | Licence note |
-|---|---|---|---:|---|---|
+| - | - | - | -: | - | - |
 | hg19 reference (UCSC) | REF check, sequence | 904.8 MB | Aug 2018 | Once | UCSC states genome data is free for public and commercial use |
 | hg38 reference (UCSC) | REF check, sequence | 938.1 MB | Jan 2014 | Once | Same |
 | Chain files (Ensembl), both directions | Cross-build mapping | 1.0 MB | Jul 2014 | Once | Ensembl data; licence terms for these files not confirmed |
@@ -29,37 +31,87 @@ Sizes and dates were read from each server on 1 November 2026, using header requ
 | gnomAD v2.1.1 constraint | pLI, LOEUF | 4.4 MB | Aug 2020 | Automatic | Licence terms not confirmed; see gnomad.broadinstitute.org |
 | HPO genes to disease | Gene-disease links | 1.4 MB | Sep 2026 | Automatic | Free with citation of the HPO Consortium; see hpo.jax.org |
 
-**Total:** about 3.3 GB saved and processed, plus 4.7 GB of Pfam read through, so about 8 GB transferred. Downloads are deleted after each build. If you can't spare that, `--skip-pfam-regions` avoids the Pfam read, but then domain positions are missing.
+Downloads are deleted after each build. If you can't spare the Pfam read, the word `nopfam` on `varsight setup` skips it, but then domain positions are missing.
 
-**Final size:** about 10 to 12 GB (estimate). Keep about 25 GB free during setup.
+## Advanced databases
 
-## Added beyond the original list
+These are optional. A report gains columns only for the ones you install, and the core results never depend on them.
 
-These weren't in the original request, and were added because they help interpretation and are free to download:
+```bash
+varsight databases              # list them all, with what is installed
+varsight add dbsnp              # add one
+varsight remove dbsnp           # remove it and free the disk space
+```
 
-- **ClinGen** gene-disease validity and dosage sensitivity.
-- **gnomAD constraint** (pLI, LOEUF), showing how tolerant a gene is of damaging variants.
-- **HPO** gene-disease links.
-- **CIViC** cancer evidence.
-- **MANE**, for choosing the default transcript.
-- **GENCODE**, so `ENST` input works.
-- **Links** to gnomAD, UCSC Genome Browser, ClinGen, CIViC, OMIM, cBioPortal and PubMed.
+### VarSight can fetch these
 
-## Optional
+| Database | Adds | Transfer | Kept on disk (estimate) | Licence note |
+| - | - | - | - | - |
+| `dbsnp` | rs numbers, plus the frequencies dbSNP carries from TOPMed, 1000 Genomes, gnomAD, ExAC and ALFA | 26 GB per build, read without saving | 1 to 3 GB per build | NCBI places no restrictions on reuse |
+| `topmed` | Comes with `dbsnp`, through its `FREQ` field | Included | Included | As dbSNP. TOPMed's own per-sample files need dbGaP access |
+| `thousand_genomes` | Allele frequency overall and in five continental groups | 1.4 GB on hg19, 0.9 GB on hg38, read without saving | Under 200 MB per build | Open data from the International Genome Sample Resource |
+| `gnomad` | Allele frequency, popmax and homozygote count from v2.1.1 exomes. hg38 uses gnomAD's own liftover | 59 GB on hg19, 85 GB on hg38, read without saving | 2 to 4 GB per build | Public release; check gnomad.broadinstitute.org |
+| `gnomad_sv` | Structural variants overlapping the position | 134 MB on hg19, 1.6 GB on hg38 | Under 100 MB per build | Same |
+| `phylop` | Conservation across 100 vertebrates | 8.9 GB on hg19, 9.2 GB on hg38 | The same, kept as the original file | UCSC states genome data is free for public and commercial use |
+| `hotspots` | Whether the residue is a recurrent cancer hotspot, and in how many tumours | Under 5 MB | Under 5 MB | Public website; check cancerhotspots.org |
+| `decipher` | Haploinsufficiency prediction and DDG2P entries for the gene | Under 5 MB | Under 10 MB | Public downloads; check deciphergenomics.org and Gene2Phenotype. Patient-level DECIPHER data needs a data access agreement, so that stays a link |
+| `clingen_variants` | Expert panel classification and evidence codes | About 20 MB | About 30 MB | CC0, per ClinGen |
 
-| Source | Command | Size | Note |
-|---|---|---|---|
-| AlphaMissense | `varsight setup --with alphamissense --accept-license alphamissense` | About 600 MB per build, and a large database | The file header states **CC BY-NC-SA 4.0, non-commercial**, while a later Zenodo record says CC BY 4.0. You must accept this yourself. Its builder has only been tested on a small real-format sample |
-| gnomAD frequencies, hg19 | `varsight setup --with gnomad --gnomad-chrom 21` | About 59 GB read for all chromosomes, without saving the VCF. chr21 alone is 653 MB | Limit it with `--gnomad-chrom`. Its builder has only been tested on a small sample |
+### You must accept the terms first
 
-Frequencies listed in ClinVar records (ExAC, ESP, 1000 Genomes) are included by default, but only for variants ClinVar has.
+| Database | Adds | Transfer | Kept (estimate) | Licence note |
+| - | - | - | - | - |
+| `revel` | Missense pathogenicity score, 0 to 1 | About 650 MB | About 3 GB per build | Check the REVEL site before any commercial use |
+| `alphamissense` | Missense prediction from Google DeepMind | About 600 MB per build | About 3 GB per build | The file header states CC BY-NC-SA 4.0, while a later Zenodo record says CC BY 4.0 |
+
+```bash
+varsight add revel accept
+```
+
+### These need your own account
+
+VarSight can't download these for you, because their licences need your own registration. Download the file yourself, then point VarSight at it. The file stays on your computer.
+
+| Database | How to get it | Licence note |
+| - | - | - |
+| `cosmic` | Register at cancer.sanger.ac.uk/cosmic/download, and download Cosmic_GenomeScreensMutant for your build | Free for non-commercial use after registering. Commercial users need a licence from QIAGEN, and paid patient reports count as commercial |
+| `cosmic_census` | The same site, Cosmic_CancerGeneCensus | Same |
+| `cosmic_fusions` | The same site, Cosmic_Fusion | Same |
+| `omim` | Register at omim.org/downloads, and download genemap2.txt with your own key | Copyright Johns Hopkins University. Free for research after registering; commercial use needs a licence |
+| `spliceai` | Sign in at basespace.illumina.com/s/otSPW8hnhaZR, and download spliceai_scores.masked.snv for your build | Free for academic and not-for-profit use; otherwise a licence from Illumina |
+| `primateai` | Sign in at basespace.illumina.com/s/yYGFdGih1rXL, and download the PrimateAI scores | Check Illumina's terms for your use |
+
+```bash
+varsight add cosmic_census file=Cosmic_CancerGeneCensus_v101_GRCh38.tsv.gz accept
+varsight add cosmic file=Cosmic_GenomeScreensMutant_v101_GRCh38.tsv.gz build=hg38 accept
+```
+
+If the file name shows the build, you don't need `build=`.
+
+### How much of this has been tested
+
+| Database | Status |
+| - | - |
+| Cancer Hotspots, DECIPHER, DDG2P, ClinGen classifications | Installed from the real, complete files and read back through annotation on Linux and Windows on 1 November 2026: 1,165 hotspots, 19,124 genes, 2,871 DDG2P entries and 12,207 classifications |
+| dbSNP, 1000 Genomes, gnomAD, gnomAD SV, REVEL | Builders tested on samples cut from each real file. The full downloads have not been run |
+| AlphaMissense | Builder tested on a small real-format sample |
+| phyloP | The reader was run across the network against the real 9 GB files. It gives 9.236 at hg38 chr7:140753336, the same as dbNSFP's value for that site |
+| COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | **Written from each provider's documented columns, without a real file.** If your file doesn't match, VarSight stops with a clear message and installs nothing. Please report it |
+
+### Scope for very large files
+
+By default, dbSNP, 1000 Genomes, gnomAD and SpliceAI keep only coding exons plus 50 bases either side (500 for SpliceAI). A 26 GB file becomes one or two GB, and most interpretation work is there. To keep everything, add `scope=all`. Limit gnomAD to some chromosomes with `chrom=17,21`. Coverage outside these regions is then reported as `not_found`, so `not_found` for a deep intronic variant means only that it wasn't kept.
+
+## Also available in ClinVar records
+
+Frequencies listed in ClinVar records (ExAC, ESP, 1000 Genomes) are included with the core data, but only for variants ClinVar has.
 
 ## Not included
 
-- **COSMIC:** free for non-commercial use after registering. Its terms count paid patient reports as commercial. Link only.
 - **OncoKB:** full content needs a licence. Link only.
 - **Franklin, VarSome, ProteinPaint:** websites without a free bulk download. Link only.
-- **REVEL, CADD, SpliceAI, dbNSFP:** not added. Their terms need checking first, and many restrict commercial use.
+- **CADD, dbNSFP:** not added. Their terms need checking first, and many restrict commercial use.
+- **hg18:** VarSight works with hg19 and hg38 only. hg18 input is refused rather than guessed at.
 - **UCSC chain files:** licensed for non-commercial use by independent researchers and nonprofits only, so Ensembl's are used instead.
 
 ## Reference links
@@ -67,7 +119,7 @@ Frequencies listed in ClinVar records (ExAC, ESP, 1000 Genomes) are included by 
 Each link was opened in an automated browser using BRAF V600E, on the date shown. A person may see something different, and sites change.
 
 | Database | Label | Result | Tested |
-|---|---|---|---|
+| - | - | - | - |
 | ClinVar | Confirmed ID | Opens; same classification | 31 Oct 2026 |
 | NCBI Gene, RefSeq, dbSNP | Confirmed ID | Open | 31 Oct 2026 |
 | HGNC | Confirmed ID | Opens | 1 Nov 2026 |
@@ -104,6 +156,15 @@ If you publish results, cite the sources you relied on:
 - **ClinGen:** Rehm HL et al., *New England Journal of Medicine*.
 - **gnomAD:** Karczewski KJ et al., *Nature*.
 - **HPO:** Gargano MA et al., *Nucleic Acids Research*.
+- **dbSNP:** Sherry ST et al., *Nucleic Acids Research*.
+- **1000 Genomes:** The 1000 Genomes Project Consortium, *Nature*.
+- **REVEL:** Ioannidis NM et al., *American Journal of Human Genetics*.
 - **AlphaMissense:** Cheng J et al., *Science*.
+- **SpliceAI:** Jaganathan K et al., *Cell*.
+- **PrimateAI:** Sundaram L et al., *Nature Genetics*.
+- **phyloP:** Pollard KS et al., *Genome Research*.
+- **COSMIC:** Tate JG et al., *Nucleic Acids Research*.
+- **Cancer Hotspots:** Chang MT et al., *Cancer Discovery*.
+- **DECIPHER:** Firth HV et al., *American Journal of Human Genetics*.
 
 Check each source's site for its current preferred citation.

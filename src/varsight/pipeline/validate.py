@@ -259,13 +259,13 @@ def render_report(results: list[BuildResult]) -> str:
         lines += [f"## {result.build}", ""]
         rate = result.rows / result.seconds if result.seconds else 0
         lines += [f"{result.rows:,} ClinVar names tested in {result.seconds:.1f} s ({rate:,.0f} per second).", ""]
-        lines += ["| Test | Passed | Total | Rate |", "|---|---:|---:|---:|"]
+        lines += ["| Test | Passed | Total | Rate |", "| - | -: | -: | -: |"]
         for name in sorted(result.scores):
             score = result.scores[name]
             lines.append(f"| {name} | {score.passed:,} | {score.total:,} | {score.rate} |")
         lines.append("")
         if result.counts:
-            lines += ["| Not scored | Count |", "|---|---:|"]
+            lines += ["| Not scored | Count |", "| - | -: |"]
             for name, count in sorted(result.counts.items()):
                 lines.append(f"| {name} | {count:,} |")
             lines.append("")

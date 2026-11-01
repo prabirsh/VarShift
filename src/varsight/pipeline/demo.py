@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -13,9 +12,10 @@ from ..annotate import Annotator
 from ..batch import annotate_list, annotate_vcf, vcf_columns
 from ..errors import DataError
 from ..genome import open_build_genome
-from ..output import ResultWriter
+from ..output import ReportContext, ReportFolder, open_file_sink
 from ..store import DB_DIR, GENOME_DIR, MANIFEST, SCHEMA_VERSION, DataStore
 from . import builders
+from ..output import render_card
 from .selftest import run_selftest
 from .manager import utc_now
 
@@ -28,7 +28,7 @@ def find_demo_dir(explicit: str | None = None) -> Path:
     for candidate in candidates:
         if (candidate / "sources").is_dir():
             return candidate
-    raise DataError("cannot find the demo folder; run this from the VarSight repository, or add --demo-dir")
+    raise DataError("cannot find the demo folder; run this from the VarSight repository, or add demodir=PATH")
 
 
 def build_demo_store(demo_dir: Path, data_dir: Path) -> dict:
@@ -126,26 +126,28 @@ def run_demo(demo_dir_text: str | None, out: Path, force: bool = False) -> int:
             for result in failed:
                 print(f"  FAIL {result['name']}: {result['detail']}")
 
+            installed, versions = store.installed(), store.versions()
+
             print("\nAnnotating demo/variants.txt (p., c., g. and rs inputs)")
-            for suffix in ("json", "tsv", "xlsx"):
-                target = out / f"variants.{suffix}"
-                writer = ResultWriter(str(target), suffix, force=force)
-                counts = annotate_list(annotator, demo_dir / "variants.txt", writer, None)
-                writer.close()
-                print(f"  wrote {target} ({counts['results']} results, {counts['errors']} not annotated)")
+            context = ReportContext(input_name="variants.txt", installed=installed, versions=versions)
+            folder = ReportFolder(out / "variants", context, force)
+            counts = annotate_list(annotator, demo_dir / "variants.txt", folder, None)
+            folder.close()
+            json_sink = open_file_sink(out / "variants" / "results.json", context, force)
+            annotate_list(annotator, demo_dir / "variants.txt", json_sink, None)
+            json_sink.close()
+            print(f"  {counts['results']} results, {counts['errors']} not annotated. Open: {folder.paths[0]}")
 
             print("\nAnnotating demo/demo.hg19.vcf")
             vcf = demo_dir / "demo.hg19.vcf"
-            for suffix in ("tsv", "xlsx"):
-                target = out / f"demo.hg19.annotated.{suffix}"
-                writer = ResultWriter(str(target), suffix, vcf_columns(vcf), force)
-                counts = annotate_vcf(annotator, vcf, writer, None)
-                writer.close()
-                print(f"  wrote {target} ({counts['annotated']} annotated, {counts['ref_mismatch']} REF mismatches)")
+            context = ReportContext(input_name="demo.hg19.vcf", prefix=vcf_columns(vcf), installed=installed, versions=versions)
+            folder = ReportFolder(out / "demo.hg19", context, force)
+            counts = annotate_vcf(annotator, vcf, folder, None)
+            folder.close()
+            print(f"  {counts['annotated']} annotated, {counts['ref_mismatch']} REF mismatches on purpose. Open: {folder.paths[0]}")
 
-            print("\nOne result in full:")
-            first = annotator.annotate_text("BRAF V600E", "hg19")[0]
-            _print_summary(first)
+            print("\nOne result on the screen:\n")
+            print(render_card(annotator.annotate_text("BRAF V600E", "hg19")[0]))
         finally:
             store.close()
     finally:
@@ -154,23 +156,4 @@ def run_demo(demo_dir_text: str | None, out: Path, force: bool = False) -> int:
     return 1 if failed else 0
 
 
-def _print_summary(record: dict) -> None:
-    clinvar = record["evidence"]["clinvar"]
-    rows = [
-        ("input", record["input"]["raw"]),
-        ("hg19", record["variant"]["hg19"]["key"]),
-        ("hg38", record["variant"]["hg38"]["key"]),
-        ("gene", record["gene"]["symbol"]),
-        ("HGVS c.", record["hgvs"]["c"]),
-        ("HGVS p.", record["hgvs"]["p"]),
-        ("effect", record["effect"]["type"]),
-        ("ClinVar", f"{clinvar.get('id')}: {clinvar.get('classification')}"),
-        ("candidates", record["candidate"]["of"]),
-    ]
-    for label, value in rows:
-        print(f"  {label:11} {value}")
-    print("  links:")
-    for link in record["links"]:
-        print(f"    {link['name']:20} {link['label']:13} {link['url']}")
-    sys.stdout.flush()
 

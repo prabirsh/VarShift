@@ -9,16 +9,22 @@ dist/
 # Local data and results. Patient VCFs and results must never be committed.
 varsight-data/
 demo_output/
+*_varsight/
 *.incomplete
+*.vcf
 *.vcf.gz
 *.vcf.bgz
 *.sqlite
+*.bw
 *.fa
 *.fai
-!demo/**
 results*.tsv
 results*.xlsx
 results*.json
+results*.jsonl
+report.html
+!demo/**
+!tests/fixtures/**
 
 # Editors and systems
 .vscode/

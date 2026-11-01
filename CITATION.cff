@@ -7,7 +7,7 @@ authors:
     given-names: Prabir
 version: 0.1.0
 license: MIT
-repository-code: "https://github.com/YOUR-USERNAME/VarSight"
+repository-code: "https://github.com/prabirsh/VarSight"
 keywords:
   - bioinformatics
   - variant annotation

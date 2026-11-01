@@ -1,25 +1,27 @@
 <#
 .SYNOPSIS
-    Register a weekly VarSight data update in Windows Task Scheduler, for use with WSL.
+    Register a weekly VarSight data update in Windows Task Scheduler.
 
 .DESCRIPTION
-    Cron inside WSL only runs while the WSL distribution is awake, so a Windows scheduled task is the
-    dependable way to run the update on a laptop. The task starts WSL, runs one update, and exits. If
-    the laptop was off at the scheduled time, Windows runs it at the next chance.
+    If the computer was off at the scheduled time, Windows runs the task at the next chance. Registering
+    a task for your own user needs no administrator rights.
 
-    Registering a task for your own user needs no administrator rights.
+    Native Windows install: give -DataDir only.
+    WSL install: also give -WslCommand, because cron inside WSL only runs while WSL is awake.
 
 .EXAMPLE
-    .\register-weekly-update.ps1 -RepoPath /mnt/i/VIP-Annotations/VarSight -DataDir /home/me/varsight-data
+    .\register-weekly-update.ps1 -DataDir C:\Users\me\varsight-data
+
+.EXAMPLE
+    .\register-weekly-update.ps1 -DataDir /home/me/varsight-data -WslCommand /home/me/.local/bin/varsight
 
 .EXAMPLE
     .\register-weekly-update.ps1 -Unregister
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string] $RepoPath,
     [string] $DataDir,
-    [string] $VarsightCommand,
+    [string] $WslCommand,
     [string] $Distribution,
     [ValidateSet('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')]
     [string] $Day = 'Sunday',
@@ -38,30 +40,25 @@ if ($Unregister) {
     return
 }
 
-foreach ($required in @{ RepoPath = $RepoPath; DataDir = $DataDir }.GetEnumerator()) {
-    if (-not $required.Value) {
-        throw "Please give -$($required.Key). Both paths are WSL paths, such as /home/me/varsight-data."
+if (-not $DataDir) {
+    throw 'Please give -DataDir, the folder you chose at setup.'
+}
+
+if ($WslCommand) {
+    $wslArguments = @()
+    if ($Distribution) { $wslArguments += @('-d', $Distribution) }
+    $wslArguments += @('-e', 'sh', '-lc', ('"' + "'$WslCommand' update data='$DataDir'" + '"'))
+    $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument ($wslArguments -join ' ')
+}
+else {
+    $folder = Join-Path $env:LOCALAPPDATA 'VarSight\bin'
+    $launcher = @('varsight.exe', 'varsight.cmd') | ForEach-Object { Join-Path $folder $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $launcher) {
+        throw "Cannot find the varsight command in $folder. Run install.ps1 first, or give -WslCommand for a WSL install."
     }
+    $action = New-ScheduledTaskAction -Execute $launcher -Argument "update `"data=$DataDir`""
 }
 
-function ConvertTo-ShellArgument([string] $Text) {
-    return "'" + $Text.Replace("'", "'\''") + "'"
-}
-
-$script = ConvertTo-ShellArgument "$RepoPath/scripts/weekly-update.sh"
-$dataArgument = ConvertTo-ShellArgument $DataDir
-$command = "sh $script $dataArgument"
-if ($VarsightCommand) {
-    $command += ' ' + (ConvertTo-ShellArgument $VarsightCommand)
-}
-
-$wslArguments = @()
-if ($Distribution) {
-    $wslArguments += @('-d', $Distribution)
-}
-$wslArguments += @('-e', 'sh', '-lc', ('"' + $command.Replace('"', '\"') + '"'))
-
-$action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument ($wslArguments -join ' ')
 $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $Day -At $Time
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 6)
 

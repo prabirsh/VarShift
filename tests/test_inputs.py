@@ -181,7 +181,7 @@ class Limits(unittest.TestCase):
 
     def test_hostile_text_is_only_ever_an_input_error(self):
         for text in (
-            "'; DROP TABLE clinvar; --",
+            "'; DROP TABLE clinvar; " + "-" * 2,
             "../../etc/passwd",
             "$(rm -rf /)",
             "BRAF V600E; rm -rf /",

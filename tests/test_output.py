@@ -1,17 +1,22 @@
-"""Output files: safe against spreadsheet formulas, private, and never mistaken for complete."""
+"""Reports: safe against spreadsheet formulas, private, never mistaken for complete, and readable."""
 
 import csv
+import io
+import json
 import os
+import re
 import stat
 import tempfile
 import unittest
 import xml.etree.ElementTree as ElementTree
 import zipfile
 from pathlib import Path
+from unittest import mock
 
+from varsight import report
 from varsight.errors import InputError
 from varsight.links import build_links, link_names
-from varsight.output import ResultWriter, _guard_cell, columns, flatten, format_for
+from varsight.output import ReportContext, ReportFolder, ScreenSink, _guard_cell, columns, flatten, format_of, open_file_sink, render_card
 from varsight.xlsx import XlsxWriter
 
 MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -28,7 +33,12 @@ RECORD = {
     "links": [{"name": "ClinVar", "label": "confirmed_id", "url": "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"}],
     "versions": {"clinvar.hg19": "2026-10-25"},
     "flags": ["multiple_candidates"],
+    "priority": {"level": 2, "label": "Medium", "reasons": ["ClinVar: conflicting classifications"]},
 }
+
+
+def with_priority(level, label, gene="BRAF"):
+    return {**RECORD, "gene": {"symbol": gene}, "priority": {"level": level, "label": label, "reasons": [f"because {label}"]}}
 
 
 class Folder(unittest.TestCase):
@@ -36,24 +46,25 @@ class Folder(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.root = Path(self.folder.name)
+        self.context = ReportContext(input_name="test.vcf", versions={"clinvar.hg19": "2026-10-25"})
 
 
 class FileHandling(Folder):
     def test_format_comes_from_the_extension(self):
-        self.assertEqual(format_for("a.xlsx", None), "xlsx")
-        self.assertEqual(format_for("a.tsv", None), "tsv")
-        self.assertEqual(format_for(None, None), "json")
-        self.assertEqual(format_for("a.xlsx", "tsv"), "tsv")
+        self.assertEqual(format_of("a.xlsx"), "xlsx")
+        self.assertEqual(format_of("a.HTML"), "html")
+        self.assertEqual(format_of("a.tsv"), "tsv")
+        self.assertIsNone(format_of("a_folder"))
         with self.assertRaises(InputError):
-            format_for("a.pdf", None)
+            open_file_sink(self.root / "a.pdf", self.context)
 
     def test_incomplete_until_closed(self):
         target = self.root / "out.tsv"
-        writer = ResultWriter(str(target), "tsv")
-        writer.write(RECORD)
+        sink = open_file_sink(target, self.context)
+        sink.write(RECORD)
         self.assertTrue((self.root / "out.tsv.incomplete").exists())
         self.assertFalse(target.exists())
-        writer.close()
+        sink.close()
         self.assertTrue(target.exists())
         self.assertFalse((self.root / "out.tsv.incomplete").exists())
 
@@ -61,18 +72,18 @@ class FileHandling(Folder):
         target = self.root / "out.tsv"
         target.write_text("precious")
         with self.assertRaises(InputError):
-            ResultWriter(str(target), "tsv")
+            open_file_sink(target, self.context)
         self.assertEqual(target.read_text(), "precious")
-        writer = ResultWriter(str(target), "tsv", force=True)
-        writer.close()
+        open_file_sink(target, self.context, replace=True).close()
         self.assertNotEqual(target.read_text(), "precious")
 
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
-    def test_results_are_private(self):
-        target = self.root / "out.tsv"
-        writer = ResultWriter(str(target), "tsv")
-        writer.close()
-        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+    def test_every_report_is_private(self):
+        folder = ReportFolder(self.root / "reports", self.context)
+        folder.write(RECORD)
+        folder.close()
+        for path in folder.paths:
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600, path.name)
 
     @unittest.skipIf(os.name == "nt", "symlinks need privileges on Windows")
     def test_a_symbolic_link_is_not_followed(self):
@@ -81,7 +92,7 @@ class FileHandling(Folder):
         link = self.root / "link.tsv"
         link.symlink_to(real)
         with self.assertRaises(InputError):
-            ResultWriter(str(link), "tsv", force=True)
+            open_file_sink(link, self.context, replace=True)
 
 
 class Tsv(Folder):
@@ -99,9 +110,9 @@ class Tsv(Folder):
 
     def test_a_row_has_one_value_per_column(self):
         target = self.root / "out.tsv"
-        writer = ResultWriter(str(target), "tsv")
-        writer.write(RECORD)
-        writer.close()
+        sink = open_file_sink(target, self.context)
+        sink.write(RECORD)
+        sink.close()
         with open(target, encoding="utf-8", newline="") as handle:
             rows = list(csv.reader(handle, delimiter="\t", quoting=csv.QUOTE_NONE))
         self.assertEqual(len(rows), 2)
@@ -113,10 +124,18 @@ class Tsv(Folder):
 
     def test_every_database_gets_a_link_column(self):
         for name in ("ClinVar", "NCBI Gene", "HGNC", "Ensembl", "UniProt", "Pfam", "ProteinPaint", "Franklin", "COSMIC", "VarSome", "OncoKB"):
-            self.assertIn(f"link_{name}", columns())
+            self.assertIn(f"link_{name}", columns(self.context))
+
+    def test_advanced_columns_appear_only_when_installed(self):
+        self.assertNotIn("revel", columns(ReportContext()))
+        self.assertNotIn("topmed_af", columns(ReportContext()))
+        with_both = columns(ReportContext(installed=["revel.hg19", "dbsnp.hg38"]))
+        for name in ("revel", "topmed_af", "dbsnp_rsid"):
+            self.assertIn(name, with_both)
+        self.assertNotIn("cosmic_id", with_both)
 
 
-class Excel(Folder):
+class ExcelCells(Folder):
     def _write(self, rows):
         path = self.root / "t.xlsx"
         writer = XlsxWriter(path)
@@ -164,6 +183,133 @@ class Excel(Folder):
     def test_many_rows_stay_cheap(self):
         path = self._write([[f"row{i}", i] for i in range(5000)])
         self.assertEqual(len(self._cells(path)), 10000)
+
+
+class Workbook(Folder):
+    def setUp(self):
+        super().setUp()
+        self.path = self.root / "results.xlsx"
+        sink = open_file_sink(self.path, self.context)
+        for level, label, gene in ((4, "Low", "AAA"), (1, "High", "BBB"), (3, "Review", "CCC"), (2, "Medium", "DDD"), (1, "High", "BBB")):
+            sink.write(with_priority(level, label, gene))
+        sink.close()
+
+    def _sheets(self):
+        with zipfile.ZipFile(self.path) as archive:
+            book = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+            rels = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+            targets = {rel.get("Id"): rel.get("Target") for rel in rels}
+            sheets = {}
+            key = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+            for sheet in book.find(f"{MAIN}sheets"):
+                root = ElementTree.fromstring(archive.read("xl/" + targets[sheet.get(key)].lstrip("/").removeprefix("xl/")))
+                rows = []
+                for row in root.findall(f".//{MAIN}row"):
+                    values = []
+                    for cell in row:
+                        text = cell.find(f"{MAIN}is/{MAIN}t")
+                        number = cell.find(f"{MAIN}v")
+                        values.append(text.text if text is not None else number.text if number is not None else None)
+                    rows.append(values)
+                sheets[sheet.get("name")] = rows
+        return sheets
+
+    def test_sheets_come_in_the_order_people_read_them(self):
+        self.assertEqual(list(self._sheets()), ["Summary", "Priority", "All results", "Warnings explained", "Data versions"])
+
+    def test_priority_sheet_is_sorted_and_leaves_out_low(self):
+        rows = self._sheets()["Priority"]
+        self.assertEqual([row[0] for row in rows[1:]], ["High", "High", "Medium", "Review"])
+        self.assertEqual(rows[1][1], "because High")
+
+    def test_summary_counts_each_level(self):
+        rows = self._sheets()["Summary"]
+        counts = {row[0]: row[1] for row in rows if len(row) > 1}
+        self.assertEqual((counts["High"], counts["Medium"], counts["Review"], counts["Low"]), ("2", "1", "1", "1"))
+
+    def test_all_results_keeps_every_row(self):
+        self.assertEqual(len(self._sheets()["All results"]), 6)
+
+    def test_warnings_are_explained(self):
+        row = self._sheets()["Warnings explained"][1]
+        self.assertEqual(row[0], "multiple_candidates")
+        self.assertTrue(row[2])
+        self.assertTrue(row[3])
+
+
+class HtmlReport(Folder):
+    def _payload(self, path):
+        text = path.read_text(encoding="utf-8")
+        match = re.search(r'<script type="application/json" id="data">(.*?)</script>', text, re.S)
+        return text, json.loads(match.group(1)) if match else None
+
+    def _write(self, records):
+        path = self.root / "report.html"
+        sink = open_file_sink(path, self.context)
+        for record in records:
+            sink.write(record)
+        sink.close()
+        return path
+
+    def test_the_data_is_inside_the_page(self):
+        text, payload = self._payload(self._write([with_priority(1, "High")]))
+        self.assertNotIn("/*VARSIGHT_DATA*/", text)
+        self.assertIsNotNone(payload, "report data block not found")
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["rows"][0]["g"], "BRAF")
+        self.assertEqual(payload["input"], "test.vcf")
+
+    def test_the_page_needs_nothing_from_the_internet(self):
+        text, _ = self._payload(self._write([RECORD]))
+        page = text[: text.index('id="data"')]
+        self.assertIsNone(re.search(r'<(script|link|img)[^>]+(src|href)="https?:', page))
+        self.assertNotIn("@import", page)
+
+    def test_input_text_cannot_close_the_script_or_add_markup(self):
+        hostile = {**RECORD, "input": {"raw": "</script><script>alert(1)</script>", "type": "x", "build": "hg19"}}
+        text, payload = self._payload(self._write([hostile]))
+        self.assertNotIn("<script>alert(1)", text)
+        self.assertEqual(payload["rows"][0]["i"], "</script><script>alert(1)</script>")
+
+    def test_the_page_writes_text_safely(self):
+        template = (Path(report.__file__).parent / "data" / "report_template.html").read_text(encoding="utf-8")
+        self.assertNotIn("innerHTML", template)
+        self.assertNotIn("document.write", template)
+        self.assertNotIn("eval(", template)
+
+    def test_when_too_large_low_results_leave_first_and_the_page_says_so(self):
+        with mock.patch.object(report, "MAX_ROWS", 3):
+            path = self._write([with_priority(4, "Low"), with_priority(1, "High"), with_priority(4, "Low"), with_priority(2, "Medium"), with_priority(3, "Review")])
+        _, payload = self._payload(path)
+        self.assertEqual(sorted(row["p"] for row in payload["rows"]), [1, 2, 3])
+        self.assertEqual((payload["total"], payload["leftOut"]), (5, 2))
+
+    def test_an_error_row_is_kept(self):
+        failed = {"input": {"raw": "NOTAGENE V600E", "type": "protein", "build": "hg19"}, "error": "no such gene", "flags": []}
+        _, payload = self._payload(self._write([failed]))
+        self.assertEqual(payload["rows"][0]["err"], "no such gene")
+
+
+class Screen(Folder):
+    def test_json_is_valid(self):
+        stream = io.StringIO()
+        sink = ScreenSink("json", self.context, stream)
+        sink.write(RECORD)
+        sink.close()
+        self.assertEqual(json.loads(stream.getvalue())[0]["gene"]["symbol"], "BRAF")
+
+    def test_tsv_has_a_header(self):
+        stream = io.StringIO()
+        sink = ScreenSink("tsv", self.context, stream)
+        sink.write(RECORD)
+        sink.close()
+        lines = stream.getvalue().splitlines()
+        self.assertTrue(lines[0].startswith("priority\t"))
+        self.assertEqual(len(lines), 2)
+
+    def test_a_failed_input_says_why(self):
+        card = render_card({"input": {"raw": "x"}, "error": "no such gene"})
+        self.assertIn("no such gene", card)
 
 
 class Links(unittest.TestCase):
@@ -254,6 +400,10 @@ class Flatten(unittest.TestCase):
     def test_an_error_record_still_flattens(self):
         row = flatten({"input": {"raw": "x", "type": "vcf", "build": "hg19"}, "flags": ["ref_mismatch"], "error": "bad"})
         self.assertEqual((row["flags"], row["error"]), ("ref_mismatch", "bad"))
+
+    def test_advanced_values_reach_their_columns(self):
+        row = flatten({"evidence": {"clinvar": {}, "advanced": {"revel": {"status": "found", "score": 0.93}, "dbsnp": {"rsid": "1", "af_topmed": 0.01}}}})
+        self.assertEqual((row["revel"], row["topmed_af"]), (0.93, 0.01))
 
 
 if __name__ == "__main__":

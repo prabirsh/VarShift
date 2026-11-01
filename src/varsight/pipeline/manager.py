@@ -24,11 +24,13 @@ from ..builds import BUILDS, primary_contigs
 from ..errors import DataError, SetupError
 from ..genome import Genome, open_build_genome
 from ..store import DB_DIR, GENOME_DIR, MANIFEST, SCHEMA_VERSION, DataStore
-from . import builders
+from ..advanced import ACCEPT, ALIAS, OWN_FILE, artifact_names, get_database
+from . import advanced_builders, builders
 from .fetch import CHUNK, Fetcher, md5_from_list
 
 log = logging.getLogger("varsight.data")
 
+SCORE_DIR = "scores"
 SNAPSHOT_DIR = "snapshots"
 DOWNLOAD_DIR = "downloads"
 STAGING_DIR = "staging"
@@ -37,7 +39,23 @@ CACHE_DIR = "cache"
 KEEP_SNAPSHOTS = 2
 # A new database may not shrink past this share of the one it replaces.
 SHRINK_LIMIT = 0.9
-_GATE_METRIC = {"clinvar": "rows", "transcripts": "refseq", "genes": "genes", "proteins": "reviewed_proteins", "civic": "variants"}
+_GATE_METRIC = {
+    "clinvar": "rows",
+    "transcripts": "refseq",
+    "genes": "genes",
+    "proteins": "reviewed_proteins",
+    "civic": "variants",
+    "dbsnp": "rows",
+    "thousand_genomes": "rows",
+    "gnomad": "rows",
+    "gnomad_sv": "rows",
+    "revel": "rows",
+    "alphamissense": "rows",
+    "hotspots": "rows",
+    "clingen_variants": "rows",
+}
+# A source that sends no version headers is simply read again after this long.
+RECHECK_DAYS = 7
 
 
 def load_catalog() -> dict:
@@ -138,11 +156,11 @@ class DataManager:
             self.data_dir.chmod(0o700)
         except OSError:
             pass
-        for name in (DB_DIR, GENOME_DIR, SNAPSHOT_DIR, DOWNLOAD_DIR, STAGING_DIR, REPORT_DIR, CACHE_DIR):
+        for name in (DB_DIR, GENOME_DIR, SCORE_DIR, SNAPSHOT_DIR, DOWNLOAD_DIR, STAGING_DIR, REPORT_DIR, CACHE_DIR):
             (self.data_dir / name).mkdir(exist_ok=True)
 
     # planning
-    def _plan(self, builds: list[str], optional: list[str]) -> list[str]:
+    def _plan(self, builds: list[str]) -> list[str]:
         order = ["genes", "civic", "proteins"]
         for build in builds:
             order.insert(0, f"genome.{build}")
@@ -150,14 +168,6 @@ class DataManager:
             order.append(f"clinvar.{build}")
         if set(builds) >= set(BUILDS):
             order.extend(["liftover.hg19_hg38", "liftover.hg38_hg19"])
-        for item in optional:
-            matched = [name for name in self.catalog["artifacts"] if name == item or name.startswith(f"{item}.")]
-            if not matched:
-                raise SetupError(f"unknown optional source {item}")
-            for name in matched:
-                artifact = self.catalog["artifacts"][name]
-                if artifact.get("build") in builds:
-                    order.append(name)
         return order
 
     def _artifact_paths(self, name: str) -> list[Path]:
@@ -166,6 +176,8 @@ class DataManager:
             build = self.catalog["artifacts"][name]["build"]
             fasta = self.data_dir / GENOME_DIR / f"{build}.fa"
             return [fasta, Path(str(fasta) + ".fai")]
+        if kind == "phylop":
+            return [self.data_dir / SCORE_DIR / f"{name}.bw"]
         return [self.data_dir / DB_DIR / f"{name}.sqlite"]
 
     def _source_url(self, source_id: str, chrom: str = "") -> str:
@@ -261,12 +273,13 @@ class DataManager:
                 stats, metas["pfam_regions"] = self._build_proteins(paths["uniprot"], out, options)
             elif kind == "civic":
                 stats = builders.build_civic(paths["civic_variants"], paths["civic_evidence"], out)
-            elif kind == "alphamissense":
-                stats = builders.build_alphamissense(paths[artifact["sources"][0]], out, build)
-            elif kind == "gnomad":
-                stats, metas["gnomad"] = self._build_gnomad(out, build, options)
+            elif kind == "phylop":
+                out = staging / f"{name}.bw"
+                files = [out]
+                os.replace(paths[artifact["sources"][0]], out)
+                stats = {"bytes": out.stat().st_size}
             else:
-                raise SetupError(f"no builder for {kind}")
+                stats = self._build_advanced(name, kind, build, out, paths, metas, options)
         return {
             "name": name,
             "files": files,
@@ -306,10 +319,72 @@ class DataManager:
         cache_meta.write_text(json.dumps(meta), encoding="utf-8")
         return stats, meta
 
-    def _build_gnomad(self, out: Path, build: str, options: dict):
-        source = self.catalog["sources"][f"gnomad_{build}"]
-        chroms = options.get("gnomad_chroms") or [c[3:] for c in primary_contigs()]
+    def _build_advanced(self, name: str, kind: str, build: str | None, out: Path, paths: dict, metas: dict, options: dict) -> dict:
+        own_file = Path(options["file"]) if options.get("file") else None
+        if kind == "revel":
+            return advanced_builders.build_revel(paths["revel"], out, build)
+        if kind == "alphamissense":
+            return advanced_builders.build_alphamissense(paths[f"alphamissense_{build}"], out, build)
+        if kind == "hotspots":
+            return advanced_builders.build_hotspots(paths["hotspots"], out)
+        if kind == "decipher":
+            return advanced_builders.build_decipher(paths["decipher_hi"], paths["ddg2p"], out)
+        if kind == "clingen_variants":
+            return advanced_builders.build_clingen_variants(paths["clingen_variants"], out)
+        if kind == "cosmic_census":
+            return advanced_builders.build_cosmic_census(own_file, out)
+        if kind == "cosmic_fusions":
+            return advanced_builders.build_cosmic_fusions(own_file, out)
+        if kind == "omim":
+            return advanced_builders.build_omim(own_file, out)
+        if kind == "primateai":
+            return advanced_builders.build_primateai(own_file, out, build)
+        if kind == "gnomad_sv":
+            source_id = f"gnomad_sv_{build}"
+            return self._read_stream(source_id, metas, lambda lines: advanced_builders.build_gnomad_sv(lines, out, build))
         genome = self._genome_for(build)
+        try:
+            if kind == "cosmic":
+                return advanced_builders.build_cosmic(own_file, out, build, genome)
+            regions = self._regions(build, options, pad=500 if kind == "spliceai" else 50)
+            if kind == "spliceai":
+                with builders.open_text(own_file) as lines:
+                    return advanced_builders.build_spliceai(lines, out, build, genome, regions)
+            if kind == "dbsnp":
+                build_step = advanced_builders.build_dbsnp
+                source_id = f"dbsnp_{build}"
+            elif kind == "thousand_genomes":
+                build_step = advanced_builders.build_thousand_genomes
+                source_id = f"g1k_{build}"
+            elif kind == "gnomad":
+                stats, metas[f"gnomad_{build}"] = self._build_gnomad(out, build, genome, regions, options)
+                return stats
+            else:
+                raise SetupError(f"no builder for {kind}")
+            return self._read_stream(source_id, metas, lambda lines: build_step(lines, out, build, genome, regions))
+        finally:
+            genome.close()
+
+    def _regions(self, build: str, options: dict, pad: int):
+        if options.get("scope") == "all":
+            return None
+        return advanced_builders.CodingRegions(self.data_dir / DB_DIR / f"transcripts.{build}.sqlite", pad)
+
+    def _read_stream(self, source_id: str, metas: dict, step) -> dict:
+        """Read a very large file straight off the network, without saving it."""
+        source = self.catalog["sources"][source_id]
+        url = self._source_url(source_id)
+        remote = self.fetcher.head(url)
+        log.info("  reading %s (%s) without saving the whole file", source["name"], _size_label(remote.size))
+        stream = self.fetcher.stream(url, source["max_mb"] * 1024 * 1024)
+        with stream as raw, _gzip_text(raw) as lines:
+            stats = step(lines)
+        metas[source_id] = {**stream.metadata(), "license": source.get("license", "")}
+        return stats
+
+    def _build_gnomad(self, out: Path, build: str, genome, regions, options: dict):
+        source = self.catalog["sources"][f"gnomad_{build}"]
+        chroms = options.get("chrom") or [c[3:] for c in primary_contigs()]
         metas = []
 
         def chromosomes():
@@ -321,24 +396,22 @@ class DataManager:
                     yield chrom, lines
                 metas.append(stream.metadata())
 
-        try:
-            stats = builders.build_gnomad(chromosomes(), out, build, genome)
-        finally:
-            genome.close()
+        stats = advanced_builders.build_gnomad(chromosomes(), out, build, genome, regions)
         return stats, {"chromosomes": chroms, "files": metas, "license": source.get("license", "")}
 
     # publish
     def _entry(self, built: dict) -> dict:
         name = built["name"]
         artifact = self.catalog["artifacts"][name]
-        primary_id = artifact["sources"][0]
+        primary_id = artifact["sources"][0] if artifact["sources"] else None
         primary = built["metas"].get(primary_id, {})
         version = built["stats"].get("file_date") or _date_of(primary.get("last_modified", "")) or utc_now()[:10]
+        source_name = self.catalog["sources"][primary_id]["name"] if primary_id else artifact.get("title", name)
         return {
             "policy": artifact["policy"],
             "kind": artifact["kind"],
             "built_at": utc_now(),
-            "source": {"version": version, "name": self.catalog["sources"][primary_id]["name"]},
+            "source": {"version": version, "name": source_name},
             "sources": built["metas"],
             "stats": built["stats"],
             "build_seconds": built["seconds"],
@@ -368,14 +441,14 @@ class DataManager:
         self._save_manifest(manifest)
 
     # setup
-    def setup(self, builds: list[str], optional: list[str] | None = None, options: dict | None = None, force: bool = False) -> list[dict]:
+    def setup(self, builds: list[str], options: dict | None = None, force: bool = False) -> list[dict]:
         options = options or {}
         self._prepare_folders()
         with _Lock(self.data_dir / ".lock"):
             manifest = self.load_manifest()
             manifest["builds"] = sorted(set(manifest.get("builds", [])) | set(builds))
             self._save_manifest(manifest)
-            plan = self._plan(sorted(set(manifest["builds"])), optional or [])
+            plan = self._plan(sorted(set(manifest["builds"])))
             done = []
             for number, name in enumerate(plan, 1):
                 if name in manifest["files"] and not force and all(p.exists() for p in self._artifact_paths(name)):
@@ -390,7 +463,64 @@ class DataManager:
             self._write_report("setup", {"builds": manifest["builds"], "installed": done})
             return done
 
+    # advanced databases
+
+    def add(self, name: str, options: dict | None = None) -> list[dict]:
+        """Install one advanced database for the builds set up here."""
+        options = dict(options or {})
+        database = get_database(name)
+        if database is None:
+            raise SetupError(f"no database named {name}; see: varsight databases")
+        if database.access == ALIAS:
+            raise SetupError(f"{database.title} comes with {database.alias_of}. To get it, run: varsight add {database.alias_of}")
+        if database.access in (ACCEPT, OWN_FILE) and not options.get("accepted"):
+            raise SetupError(f"{database.title}: {database.license}. If that fits your use, add the word accept to the command")
+        if database.access == OWN_FILE:
+            file = options.get("file")
+            if not file:
+                raise SetupError(f"{database.title} needs your own licensed file. {database.get_it}. Then run: varsight add {database.name} file=PATH accept")
+            if not Path(file).is_file():
+                raise SetupError(f"cannot find the file {file}")
+        self._prepare_folders()
+        with _Lock(self.data_dir / ".lock"):
+            manifest = self.load_manifest()
+            builds = manifest.get("builds", [])
+            if not builds:
+                raise DataError(f"nothing is installed in {self.data_dir} yet; run: varsight setup")
+            if database.access == OWN_FILE and database.per_build:
+                builds = [_build_of_file(options, builds, database)]
+            done = []
+            for artifact in artifact_names(database, builds):
+                log.info("adding %s", artifact)
+                built = self._build(artifact, options)
+                if database.access == OWN_FILE:
+                    built["metas"] = {"own_file": {"name": Path(options["file"]).name, "license": database.license}}
+                self._publish(manifest, built, None)
+                done.append({"artifact": artifact, "stats": built["stats"], "seconds": built["seconds"]})
+            self._cleanup_downloads([])
+            self._write_report("add", {"database": database.name, "installed": done})
+            return done
+
+    def remove(self, name: str) -> list[str]:
+        database = get_database(name)
+        if database is None or database.access == ALIAS:
+            raise SetupError(f"{name} is not an advanced database you can remove; see: varsight databases")
+        with _Lock(self.data_dir / ".lock"):
+            manifest = self.load_manifest()
+            gone = []
+            for artifact in list(manifest.get("files", {})):
+                if artifact == database.name or artifact.startswith(f"{database.name}."):
+                    for target in self._artifact_paths(artifact):
+                        target.unlink(missing_ok=True)
+                    del manifest["files"][artifact]
+                    gone.append(artifact)
+            if not gone:
+                raise SetupError(f"{database.title} is not installed")
+            self._save_manifest(manifest)
+            return gone
+
     # update
+
     def check_updates(self) -> list[UpdateItem]:
         manifest = self.load_manifest()
         if not manifest["files"]:
@@ -398,7 +528,7 @@ class DataManager:
         items = []
         for name, entry in sorted(manifest["files"].items()):
             artifact = self.catalog["artifacts"].get(name)
-            if artifact is None:
+            if artifact is None or artifact["policy"] == "own_file":
                 continue
             item = UpdateItem(name, artifact["policy"])
             for source_id in artifact["sources"]:
@@ -413,6 +543,9 @@ class DataManager:
                     break
                 same_file = url == stored.get("url")
                 same_content = (remote.etag, remote.last_modified) == (stored.get("etag"), stored.get("last_modified"))
+                if not (remote.etag or remote.last_modified):
+                    # No version headers, so a small file like this is just read again after a while.
+                    same_content = not _older_than(entry.get("built_at", ""), RECHECK_DAYS)
                 if not (same_file and same_content):
                     item.changed.append(source_id)
             items.append(item)
@@ -448,7 +581,7 @@ class DataManager:
                     continue
                 if item.policy in ("approval", "optional") and not approved:
                     item.action = "needs_approval"
-                    item.detail = f"can change results; run: varsight data update --approve {item.artifact}"
+                    item.detail = f"can change results; to apply: varsight update approve={item.artifact}"
                     continue
                 if check_only:
                     item.action = "available"
@@ -561,6 +694,32 @@ class DataManager:
         path = folder / f"{action}-{stamp}.json"
         path.write_text(json.dumps({"action": action, "time": utc_now(), **body}, indent=2, default=str), encoding="utf-8")
         return path
+
+
+def _build_of_file(options: dict, builds: list[str], database) -> str:
+    """Which build a licensed file is for: from build=, its name, or the only build installed."""
+    chosen = options.get("build")
+    file_name = Path(options["file"]).name.lower()
+    if not chosen:
+        if "grch37" in file_name or "hg19" in file_name or "b37" in file_name:
+            chosen = "hg19"
+        elif "grch38" in file_name or "hg38" in file_name or "b38" in file_name:
+            chosen = "hg38"
+        elif len(builds) == 1:
+            chosen = builds[0]
+    if chosen is None:
+        raise SetupError(f"cannot tell which genome build {Path(options['file']).name} is for; add build=hg19 or build=hg38")
+    if chosen not in builds:
+        raise SetupError(f"{database.title} is for {chosen}, but only {', '.join(builds)} is set up here")
+    return chosen
+
+
+def _older_than(stamp: str, days: int) -> bool:
+    try:
+        built = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - built).days >= days
 
 
 def _gzip_text(raw: io.RawIOBase) -> io.TextIOBase:

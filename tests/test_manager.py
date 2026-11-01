@@ -10,12 +10,16 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from tests.helpers import tiny_bigwig
 from varsight.annotate import Annotator
 from varsight.errors import DataError, SetupError
+from varsight.pipeline import updatecheck
 from varsight.pipeline.fetch import Fetcher
 from varsight.pipeline.manager import DataManager, load_catalog
 from varsight.store import DataStore
+from varsight.updates import read_status
 
 DEMO_SOURCES = Path(__file__).resolve().parents[1] / "demo" / "sources"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -39,6 +43,14 @@ MAPPING = {
     "pfam_regions": "pfam_regions.tsv.gz",
     "civic_variants": "civic_variants.tsv.gz",
     "civic_evidence": "civic_evidence.tsv.gz",
+}
+ADVANCED = {
+    "dbsnp_hg19": "dbsnp.hg19.gz",
+    "dbsnp_hg38": "dbsnp.hg38.gz",
+    "hotspots": "hotspots.sample.json",
+    "clingen_variants": "clingen_erepo.sample.txt",
+    "phylop_hg19": "phylop.bw",
+    "phylop_hg38": "phylop.bw",
 }
 
 
@@ -72,7 +84,9 @@ class Server(http.server.BaseHTTPRequestHandler):
             self.wfile.write(data)
 
 
-class Lifecycle(unittest.TestCase):
+class WithServer(unittest.TestCase):
+    """Serves the demo sources, and a few samples for the advanced databases, from 127.0.0.1."""
+
     @classmethod
     def setUpClass(cls):
         logging.disable(logging.CRITICAL)
@@ -83,6 +97,12 @@ class Lifecycle(unittest.TestCase):
         for name in set(MAPPING.values()):
             shutil.copy(DEMO_SOURCES / name, cls.www / name)
         shutil.copy(FIXTURES / "gencode.sample.gff3", cls.www / "gencode.gff3")
+        for name in ("hotspots.sample.json", "clingen_erepo.sample.txt"):
+            shutil.copy(FIXTURES / name, cls.www / name)
+        for build in ("hg19", "hg38"):
+            with open(FIXTURES / f"dbsnp.{build}.sample.txt", "rb") as source, gzip.open(cls.www / f"dbsnp.{build}.gz", "wb") as target:
+                shutil.copyfileobj(source, target)
+        (cls.www / "phylop.bw").write_bytes(tiny_bigwig())
         handler = type("Handler", (Server,), {"root": cls.www, "get_requests": []})
         cls.handler = handler
         cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -94,7 +114,7 @@ class Lifecycle(unittest.TestCase):
         for source_id, source in catalog["sources"].items():
             for key in ("list_url", "pattern", "md5_url", "md5_list", "url_template"):
                 source.pop(key, None)
-            name = MAPPING.get(source_id, "gencode.gff3" if source_id.startswith("gencode") else "absent")
+            name = {**MAPPING, **ADVANCED}.get(source_id, "gencode.gff3" if source_id.startswith("gencode") else "absent")
             source["url"] = f"{cls.base}/{name}"
         cls.catalog = catalog
         cls.data = root / "data"
@@ -113,6 +133,8 @@ class Lifecycle(unittest.TestCase):
         fetcher = Fetcher(["127.0.0.1"], retry_delay=0.01, allow_http_hosts=("127.0.0.1",))
         return DataManager(cls.data, json.loads(json.dumps(cls.catalog)), fetcher)
 
+
+class Lifecycle(WithServer):
     def _clinvar_rows(self, build="hg19"):
         store = DataStore(self.data)
         try:
@@ -177,7 +199,7 @@ class Lifecycle(unittest.TestCase):
 
         items = {i.artifact: i for i in manager.update(check_only=True)}
         self.assertEqual(items["clinvar.hg19"].action, "available")
-        self.assertEqual(self._clinvar_rows(), rows_before, "--check must change nothing")
+        self.assertEqual(self._clinvar_rows(), rows_before, "a check must change nothing")
 
         items = {i.artifact: i for i in manager.update()}
         self.assertEqual(items["clinvar.hg19"].action, "updated", items["clinvar.hg19"].detail)
@@ -232,7 +254,7 @@ class Lifecycle(unittest.TestCase):
 
         items = {i.artifact: i for i in manager.update()}
         self.assertEqual(items["transcripts.hg19"].action, "needs_approval")
-        self.assertIn("--approve", items["transcripts.hg19"].detail)
+        self.assertIn("approve=", items["transcripts.hg19"].detail)
         self.assertEqual(manager.load_manifest()["files"]["transcripts.hg19"]["built_at"], built_at)
 
         items = {i.artifact: i for i in manager.update(approve=["transcripts.hg19"])}
@@ -293,6 +315,121 @@ class Lifecycle(unittest.TestCase):
         lock.write_text("999999999")
         self._make_manager().update(check_only=True)
         self.assertFalse(lock.exists())
+
+
+class AdvancedDatabases(WithServer):
+    def _record(self, text="BRAF V600E"):
+        store = DataStore(self.data)
+        try:
+            return store, Annotator(store).annotate_text(text, "hg19")[0]
+        finally:
+            store.close()
+
+    def _installed(self):
+        return set(self.manager.load_manifest()["files"])
+
+    def test_a_small_database_is_added_used_and_removed(self):
+        done = self.manager.add("hotspots")
+        self.assertEqual([item["artifact"] for item in done], ["hotspots"])
+        self.assertTrue((self.data / "db" / "hotspots.sqlite").is_file())
+        self.assertEqual(list((self.data / "downloads").iterdir()), [])
+        _, record = self._record("NRAS Q61K")
+        self.assertEqual(record["evidence"]["advanced"]["hotspots"]["status"], "found")
+
+        self.assertEqual(self.manager.remove("hotspots"), ["hotspots"])
+        self.assertFalse((self.data / "db" / "hotspots.sqlite").exists())
+        _, record = self._record("NRAS Q61K")
+        self.assertNotIn("hotspots", record["evidence"]["advanced"])
+
+    def test_a_large_file_is_read_as_it_arrives_for_each_build(self):
+        done = self.manager.add("dbsnp")
+        self.assertEqual(sorted(item["artifact"] for item in done), ["dbsnp.hg19", "dbsnp.hg38"])
+        self.addCleanup(self.manager.remove, "dbsnp")
+        _, record = self._record()
+        self.assertEqual(record["evidence"]["advanced"]["dbsnp"]["rsid"], "113488022")
+        self.assertFalse([p for p in (self.data / "downloads").iterdir()])
+
+    def test_conservation_scores_are_kept_as_the_original_file(self):
+        self.manager.add("phylop")
+        self.addCleanup(self.manager.remove, "phylop")
+        self.assertTrue((self.data / "scores" / "phylop.hg19.bw").is_file())
+        store = DataStore(self.data)
+        try:
+            self.assertEqual(store.phylop("hg19", "chr7", 101), 2.5)
+        finally:
+            store.close()
+
+    def test_terms_must_be_accepted_first(self):
+        with self.assertRaises(SetupError) as caught:
+            self.manager.add("revel")
+        self.assertIn("accept", str(caught.exception))
+
+    def test_a_licensed_database_needs_the_users_own_file(self):
+        with self.assertRaises(SetupError) as caught:
+            self.manager.add("omim", {"accepted": True})
+        self.assertIn("file=PATH", str(caught.exception))
+        with self.assertRaises(SetupError) as caught:
+            self.manager.add("omim", {"accepted": True, "file": str(self.data / "absent.txt")})
+        self.assertIn("cannot find", str(caught.exception))
+
+    def test_an_own_file_is_installed_and_left_alone_by_updates(self):
+        file = Path(self.folder.name) / "census.tsv"
+        file.write_text("GENE_SYMBOL\tTIER\tROLE_IN_CANCER\nBRAF\t1\toncogene\n", encoding="utf-8")
+        self.manager.add("cosmic_census", {"accepted": True, "file": str(file)})
+        self.addCleanup(self.manager.remove, "cosmic_census")
+        self.assertIn("cosmic_census", self._installed())
+        self.assertNotIn("cosmic_census", [item.artifact for item in self._make_manager().update()])
+        _, record = self._record()
+        self.assertEqual(record["evidence"]["advanced"]["cosmic_census"]["tier"], "1")
+
+    def test_a_per_build_licensed_file_must_say_its_build(self):
+        file = Path(self.folder.name) / "cosmic.tsv"
+        file.write_text("GENOMIC_MUTATION_ID\tHGVSG\nCOSV1\t7:g.140453136A>T\n", encoding="utf-8")
+        with self.assertRaises(SetupError) as caught:
+            self.manager.add("cosmic", {"accepted": True, "file": str(file)})
+        self.assertIn("build=hg19", str(caught.exception))
+        self.manager.add("cosmic", {"accepted": True, "file": str(file), "build": "hg19"})
+        self.addCleanup(self.manager.remove, "cosmic")
+        self.assertIn("cosmic.hg19", self._installed())
+        self.assertNotIn("cosmic.hg38", self._installed())
+
+    def test_new_public_database_version_is_noticed(self):
+        self.manager.add("clingen_variants")
+        self.addCleanup(self.manager.remove, "clingen_variants")
+        path = self.www / "clingen_erepo.sample.txt"
+        original = path.read_text(encoding="utf-8")
+        self.addCleanup(path.write_text, original, encoding="utf-8")
+        self.assertEqual({i.artifact: i.changed for i in self.manager.check_updates()}["clingen_variants"], [])
+        path.write_text(original + "NM_0:c.1A>G\t999\tCA1\tx\tPAH\tphenylketonuria\t\t\tPathogenic\n", encoding="utf-8")
+        self.assertEqual({i.artifact: i.changed for i in self.manager.check_updates()}["clingen_variants"], ["clingen_variants"])
+
+    def test_the_background_check_saves_its_answer_for_next_time(self):
+        self.manager.add("clingen_variants")
+        self.addCleanup(self.manager.remove, "clingen_variants")
+        path = self.www / "clingen_erepo.sample.txt"
+        original = path.read_text(encoding="utf-8")
+        self.addCleanup(path.write_text, original, encoding="utf-8")
+        path.write_text(original + "NM_0:c.1A>G\t999\tCA1\tx\tPAH\tphenylketonuria\t\t\tPathogenic\n", encoding="utf-8")
+        with mock.patch.object(updatecheck, "load_catalog", return_value=json.loads(json.dumps(self.catalog))), mock.patch.object(updatecheck, "Fetcher", lambda hosts, **options: self._make_manager().fetcher):
+            self.assertEqual(updatecheck.run(self.data), 0)
+        waiting = [item["artifact"] for item in read_status(self.data)["items"]]
+        self.assertIn("clingen_variants", waiting)
+        self.assertEqual(self.manager.load_manifest()["files"]["clingen_variants"]["stats"]["rows"], 3, "a check changes nothing")
+
+    def test_removing_what_is_not_installed_says_so(self):
+        with self.assertRaises(SetupError) as caught:
+            self.manager.remove("gnomad")
+        self.assertIn("not installed", str(caught.exception))
+
+    def test_core_databases_cannot_be_removed_by_this_command(self):
+        with self.assertRaises(SetupError):
+            self.manager.remove("clinvar")
+        self.assertIn("clinvar.hg19", self._installed())
+
+    def test_topmed_points_to_dbsnp(self):
+        with self.assertRaises(SetupError) as caught:
+            self.manager.add("topmed")
+        self.assertIn("dbsnp", str(caught.exception))
 
 
 if __name__ == "__main__":

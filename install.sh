@@ -1,51 +1,39 @@
 #!/bin/sh
-# Install the VarSight command. It needs only Python 3.10 or newer: no pip, no sudo, no packages.
+# Install the VarSight command on Linux or WSL. It needs only Python 3.10 or newer: no pip, no sudo.
 #
-#   ./install.sh                                    command only, then run the demo
-#   ./install.sh --setup --data-dir ~/varsight-data  also download and build all the data
+#   sh install.sh               install the command, run the demo, then offer to set up the databases
+#   sh install.sh setup=no      install the command and the demo only
 #
 set -eu
 
 usage() {
     cat <<'EOF'
-Usage: ./install.sh [options]
+Usage: sh install.sh [option=value ...]
 
-  --bin-dir DIR     where to put the varsight command (default: ~/.local/bin)
-  --data-dir DIR    data folder (default: ~/varsight-data)
-  --build NAME      hg19, hg38 or both (default: both)
-  --setup           also download and build the data now (about 8 GB transfer, see README)
-  --no-demo         skip the bundled demo
-  --test            run the unit tests as well
-  -h, --help        show this help
+  bin=DIR      where to put the varsight command (default: ~/.local/bin)
+  demo=no      skip the bundled demo
+  setup=no     don't offer to set up the databases
+  test=yes     run the unit tests as well
 EOF
 }
 
 bin_dir="${HOME}/.local/bin"
-data_dir=""
-build="both"
-run_setup=0
-run_demo=1
-run_tests=0
+run_demo=yes
+run_setup=ask
+run_tests=no
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --bin-dir) bin_dir="${2:?--bin-dir needs a folder}"; shift 2 ;;
-        --data-dir) data_dir="${2:?--data-dir needs a folder}"; shift 2 ;;
-        --build) build="${2:?--build needs hg19, hg38 or both}"; shift 2 ;;
-        --setup) run_setup=1; shift ;;
-        --no-demo) run_demo=0; shift ;;
-        --test) run_tests=1; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+for argument in "$@"; do
+    case "$argument" in
+        bin=*) bin_dir="${argument#bin=}" ;;
+        demo=*) run_demo="${argument#demo=}" ;;
+        setup=*) run_setup="${argument#setup=}" ;;
+        test=*) run_tests="${argument#test=}" ;;
+        -h|help) usage; exit 0 ;;
+        *) echo "unknown option: $argument" >&2; usage >&2; exit 2 ;;
     esac
 done
 
-case "$build" in
-    hg19|hg38|both) ;;
-    *) echo "--build must be hg19, hg38 or both" >&2; exit 2 ;;
-esac
-
-repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+repo_dir=$(CDPATH='' cd "$(dirname "$0")" && pwd -P)
 
 python_bin=""
 for candidate in python3 python; do
@@ -64,7 +52,7 @@ if ! "$python_bin" -c 'import sqlite3, gzip, mmap, ssl' 2>/dev/null; then
     echo "$python_bin is missing a standard module (sqlite3, gzip, mmap or ssl)." >&2
     exit 1
 fi
-echo "Python: $("$python_bin" --version) at $python_bin"
+echo "Python: $("$python_bin" -V) at $python_bin"
 
 mkdir -p "$bin_dir"
 launcher="$bin_dir/varsight"
@@ -77,40 +65,40 @@ quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 chmod 755 "$launcher.tmp"
 mv "$launcher.tmp" "$launcher"
 echo "Command: $launcher"
+"$launcher" version
 
-"$launcher" --version
-
-if [ "$run_tests" -eq 1 ]; then
+if [ "$run_tests" = "yes" ]; then
     echo
     echo "Running the unit tests"
     (cd "$repo_dir" && PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 "$python_bin" -m unittest discover -s tests -t .)
 fi
 
-if [ "$run_demo" -eq 1 ]; then
+if [ "$run_demo" = "yes" ]; then
     echo
     echo "Running the demo (no download)"
-    "$launcher" demo --demo-dir "$repo_dir/demo" --out "${PWD}/demo_output" --force
-fi
-
-if [ "$run_setup" -eq 1 ]; then
-    echo
-    target="${data_dir:-$HOME/varsight-data}"
-    "$launcher" setup --data-dir "$target" --build "$build" --yes
+    "$launcher" demo demodir="$repo_dir/demo" out="${PWD}/demo_output" replace
 fi
 
 case ":${PATH}:" in
     *":$bin_dir:"*) ;;
     *)
         echo
-        echo "Add the command to your PATH by running this once:"
+        echo "To use the varsight command from anywhere, run this once:"
         echo "  echo 'export PATH=\"$bin_dir:\$PATH\"' >> ~/.bashrc && . ~/.bashrc"
         ;;
 esac
 
+if [ "$run_setup" = "ask" ] && [ -t 0 ]; then
+    echo
+    printf "Set up the databases now? It asks whether you want hg19, hg38 or both. yes or no [no] "
+    read -r answer || answer=no
+    case "$answer" in
+        y|Y|yes|Yes|YES) "$launcher" setup ;;
+    esac
+fi
+
 echo
 echo "Installed. Next steps:"
-if [ "$run_setup" -eq 0 ]; then
-    echo "  varsight setup --data-dir ~/varsight-data    download and build the data (about 8 GB transfer)"
-fi
-echo "  varsight annotate \"BRAF V600E\" --build hg19    annotate a variant"
-echo "  varsight --help                                 see every command"
+echo "  varsight setup                               choose hg19, hg38 or both, and download"
+echo "  varsight annotate \"BRAF V600E\" build=hg19    annotate a variant"
+echo "  varsight help                                see every command"

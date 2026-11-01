@@ -5,12 +5,13 @@ Runs entirely on this computer. It prints counts and writes differences to a loc
 Differences list transcript names only, with no sample IDs or genotypes, but treat that file as
 private anyway, because it shows which changes the sample carries.
 
-    python3 tools/compare_annotated_vcf.py sample.annotated.vcf.gz --differences diff.txt
+    python3 tools/compare_annotated_vcf.py sample.annotated.vcf.gz differences=diff.txt
+
+Options: build=hg19 or hg38 (read from the VCF header by default), data=FOLDER, differences=FILE.
 """
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
 from collections import Counter
@@ -43,26 +44,27 @@ def csq_columns(path: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("vcf", type=Path)
-    parser.add_argument("--build", help="hg19 or hg38; read from the VCF header by default")
-    parser.add_argument("--data-dir")
-    parser.add_argument("--differences", type=Path, help="write each differing name to this file")
-    args = parser.parse_args()
+    options = dict(item.split("=", 1) for item in sys.argv[1:] if "=" in item)
+    inputs = [item for item in sys.argv[1:] if "=" not in item]
+    if len(inputs) != 1 or set(options) - {"build", "data", "differences"}:
+        print(__doc__, file=sys.stderr)
+        return 2
+    vcf = Path(inputs[0])
+    differences_file = Path(options["differences"]) if "differences" in options else None
 
-    columns = csq_columns(args.vcf)
+    columns = csq_columns(vcf)
     for needed in ("HGVSc", "HGVSp"):
         if needed not in columns:
             raise SystemExit(f"the CSQ field has no {needed} column")
     c_at, p_at = columns.index("HGVSc"), columns.index("HGVSp")
 
-    store = DataStore(resolve_data_dir(args.data_dir))
+    store = DataStore(resolve_data_dir(options.get("data")))
     counts: Counter = Counter()
     differences: list[str] = []
-    with VcfReader(args.vcf) as reader:
-        build = args.build or reader.header.build or reader.header.named_build
+    with VcfReader(vcf) as reader:
+        build = options.get("build") or reader.header.build or reader.header.named_build
         if build not in store.builds:
-            raise SystemExit(f"cannot use build {build}; add --build, or install it with varsight setup")
+            raise SystemExit(f"cannot use build {build}; add build=hg19 or build=hg38, or install it with varsight setup")
         genome = store.genome(build)
         cache = SequenceCache(genome)
         for record in reader.records():
@@ -111,10 +113,10 @@ def main() -> int:
         total = counts[f"{level}_total"]
         if total:
             print(f"{level} agreement: {100 * counts[f'{level}_same'] / total:.2f}%")
-    if args.differences:
-        args.differences.write_text("\n".join(differences) + "\n", encoding="utf-8")
-        args.differences.chmod(0o600)
-        print(f"{len(differences):,} differences written to {args.differences}")
+    if differences_file:
+        differences_file.write_text("\n".join(differences) + "\n", encoding="utf-8")
+        differences_file.chmod(0o600)
+        print(f"{len(differences):,} differences written to {differences_file}")
     return 0
 
 

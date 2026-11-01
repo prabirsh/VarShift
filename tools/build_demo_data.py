@@ -5,13 +5,15 @@ Maintainers only. This reads from the same public sources as a real setup, with 
 keep the transfer small: sequence windows come from the UCSC REST API, and Pfam positions from the
 InterPro API. Neither is ever used by VarSight itself.
 
-    python3 tools/build_demo_data.py --out demo/sources
-    python3 tools/build_demo_data.py --out /tmp/validation --genes-file genes.txt --no-cap
+    python3 tools/build_demo_data.py out=demo/sources
+    python3 tools/build_demo_data.py out=/tmp/validation genes=genes.txt cap=none
+
+Options: out=FOLDER, genes=FILE (one gene per line, instead of the demo genes), cap=N (ClinVar records
+per gene, 1200 by default, or none), summary=N (compressed MB of variant_summary to read, 30 by default).
 """
 
 from __future__ import annotations
 
-import argparse
 import gzip
 import io
 import json
@@ -419,20 +421,20 @@ def fetch_pfam(accessions: list[str], out: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--genes-file", type=Path, help="one gene per line, instead of the demo genes")
-    parser.add_argument("--no-cap", action="store_true", help="keep every ClinVar record in the windows")
-    parser.add_argument("--cap", type=int, default=1200, help="ClinVar records per gene when capped")
-    parser.add_argument("--summary-mb", type=int, default=30, help="compressed MB of variant_summary to read")
-    args = parser.parse_args()
+    options = dict(item.split("=", 1) for item in sys.argv[1:] if "=" in item)
+    unknown = set(options) - {"out", "genes", "cap", "summary"}
+    if unknown or "out" not in options or len(options) != len(sys.argv) - 1:
+        print(__doc__, file=sys.stderr)
+        return 2
 
     genes = set(DEMO_GENES)
-    if args.genes_file:
-        genes = {g.strip() for g in args.genes_file.read_text().splitlines() if g.strip()}
-    out = args.out
+    if "genes" in options:
+        genes = {g.strip() for g in Path(options["genes"]).read_text().splitlines() if g.strip()}
+    out = Path(options["out"])
     out.mkdir(parents=True, exist_ok=True)
-    cap = None if args.no_cap else args.cap
+    cap_text = options.get("cap", "1200")
+    cap = None if cap_text == "none" else int(cap_text)
+    summary_mb = int(options.get("summary", "30"))
 
     spans_by_build = {}
     ids: set[int] | None = None
@@ -446,7 +448,7 @@ def main() -> int:
         ids = found if ids is None else ids | found
 
     print("names and gene tables", file=sys.stderr)
-    filter_summary(ids, out / "variant_summary.txt.gz", args.summary_mb)
+    filter_summary(ids, out / "variant_summary.txt.gz", summary_mb)
     listing = get(MANE_LIST).decode()
     mane_name = re.search(r'href="(MANE\.GRCh38\.v[0-9.]+\.summary\.txt\.gz)"', listing).group(1)
     filter_table(MANE_LIST + mane_name, genes, out / "mane.summary.txt.gz", "symbol")

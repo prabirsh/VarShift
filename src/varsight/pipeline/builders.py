@@ -8,6 +8,7 @@ quietly producing empty tables.
 from __future__ import annotations
 
 import csv
+import functools
 import gzip
 import io
 import logging
@@ -41,9 +42,27 @@ def open_text(path) -> io.TextIOBase:
     return open(path, encoding="utf-8", errors="replace", newline="\n")
 
 
+_open_builds: list[sqlite3.Connection] = []
+
+
+def closes_on_failure(builder):
+    """Close a half-built database when a builder stops. Windows can't remove a file that is still open."""
+
+    @functools.wraps(builder)
+    def run(*args, **kwargs):
+        try:
+            return builder(*args, **kwargs)
+        finally:
+            while _open_builds:
+                _open_builds.pop().close()
+
+    return run
+
+
 def _new_db(path: Path, script: str) -> sqlite3.Connection:
     path.unlink(missing_ok=True)
     con = sqlite3.connect(path)
+    _open_builds.append(con)
     con.executescript(
         "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA cache_size=-64000; PRAGMA temp_store=FILE;"
     )
@@ -61,6 +80,7 @@ def _finish_db(con: sqlite3.Connection, script: str = "") -> None:
 
 
 # genome
+@closes_on_failure
 def build_genome(fasta_gz: Path, out_fa: Path) -> dict:
     """Unpack the reference and index it. Line-based reads keep memory flat for a 3 GB file."""
     temp = out_fa.with_name(out_fa.name + ".tmp")
@@ -83,6 +103,7 @@ def open_binary(path):
 
 
 # liftover
+@closes_on_failure
 def build_liftover(chain_gz: Path, out: Path, source_build: str, target_build: str) -> dict:
     con = _new_db(
         out,
@@ -382,6 +403,7 @@ def _transcript_row(record: dict, mane: dict) -> tuple:
     )
 
 
+@closes_on_failure
 def build_transcripts(sources: dict[str, Path], out: Path, build: str) -> dict:
     """sources holds refseq, mane and, optionally, gencode paths."""
     mane, mane_rows = read_mane(sources["mane"])
@@ -444,6 +466,7 @@ def _float(value: str | None) -> float | None:
         return None
 
 
+@closes_on_failure
 def build_clinvar(vcf_gz: Path, summary: Path | None, out: Path, build: str, genome: Genome) -> dict:
     con = _new_db(
         out,
@@ -572,6 +595,7 @@ def _first(value: str) -> str | None:
     return value or None
 
 
+@closes_on_failure
 def build_genes(sources: dict[str, Path], out: Path) -> dict:
     con = _new_db(
         out,
@@ -756,6 +780,7 @@ def iter_uniprot(lines: Iterable[str]) -> Iterator[dict]:
             sequence.append(line.strip())
 
 
+@closes_on_failure
 def build_proteins(uniprot: Path, pfam_lines: Iterable[str] | None, out: Path, pfam_cache: Path | None = None) -> dict:
     """pfam_cache, when given, receives the rows kept from Pfam so the next build need not re-read 5 GB."""
     con = _new_db(
@@ -834,6 +859,7 @@ def build_proteins(uniprot: Path, pfam_lines: Iterable[str] | None, out: Path, p
 
 
 # CIViC
+@closes_on_failure
 def build_civic(variants: Path, evidence: Path, out: Path) -> dict:
     con = _new_db(
         out,
@@ -884,89 +910,6 @@ def build_civic(variants: Path, evidence: Path, out: Path) -> dict:
 
 
 # optional sources
-def build_alphamissense(tsv_gz: Path, out: Path, build: str) -> dict:
-    con = _new_db(
-        out,
-        """
-        CREATE TABLE alphamissense(contig TEXT, pos INT, ref TEXT, alt TEXT, am_pathogenicity REAL, am_class TEXT,
-            uniprot TEXT, protein_variant TEXT, PRIMARY KEY(contig, pos, ref, alt)) WITHOUT ROWID;
-        """,
-    )
-    insert = "INSERT OR IGNORE INTO alphamissense VALUES(?,?,?,?,?,?,?,?)"
-    rows = 0
-    batch = []
-    with open_text(tsv_gz) as handle:
-        for line in handle:
-            if line[0] == "#":
-                continue
-            fields = line.rstrip("\n").split("\t")
-            if len(fields) < 10:
-                continue
-            batch.append((canonical_contig(fields[0], build), int(fields[1]), fields[2], fields[3], float(fields[8]), fields[9], fields[5], fields[7]))
-            rows += 1
-            if len(batch) >= _BATCH:
-                con.executemany(insert, batch)
-                batch.clear()
-    con.executemany(insert, batch)
-    if rows == 0:
-        con.close()
-        raise SetupError(f"{tsv_gz} produced no rows; the format may have changed")
-    _finish_db(con)
-    return {"rows": rows}
-
-
-def build_gnomad(lines_by_chrom: Iterable[tuple[str, Iterable[str]]], out: Path, build: str, genome: Genome) -> dict:
-    """Keep only the frequency columns from gnomAD VCFs, which may be streamed straight off the network."""
-    con = _new_db(
-        out,
-        """
-        CREATE TABLE gnomad(contig TEXT, pos INT, ref TEXT, alt TEXT, filter TEXT, ac INT, an INT, af REAL,
-            nhomalt INT, popmax TEXT, af_popmax REAL, PRIMARY KEY(contig, pos, ref, alt)) WITHOUT ROWID;
-        """,
-    )
-    insert = "INSERT OR IGNORE INTO gnomad VALUES(?,?,?,?,?,?,?,?,?,?,?)"
-    stats = Counter()
-    for chrom, lines in lines_by_chrom:
-        batch = []
-        for line in lines:
-            if line[0] == "#":
-                continue
-            fields = line.split("\t", 8)
-            if len(fields) < 8:
-                continue
-            ref, alts = fields[3], fields[4]
-            info = dict(item.split("=", 1) for item in fields[7].split(";") if "=" in item)
-            for alt in alts.split(","):
-                try:
-                    variant = normalize(genome, canonical_contig(fields[0], build), int(fields[1]), ref, alt)
-                except (InputError, ReferenceMismatch):
-                    stats["skipped"] += 1
-                    continue
-                batch.append(
-                    (
-                        variant.contig,
-                        variant.pos,
-                        variant.ref,
-                        variant.alt,
-                        fields[6],
-                        _int(info.get("AC")),
-                        _int(info.get("AN")),
-                        _float(info.get("AF")),
-                        _int(info.get("nhomalt")),
-                        info.get("popmax"),
-                        _float(info.get("AF_popmax")),
-                    )
-                )
-                stats["rows"] += 1
-            if len(batch) >= _BATCH:
-                con.executemany(insert, batch)
-                batch.clear()
-        con.executemany(insert, batch)
-        stats[f"chrom_{chrom}"] = 1
-    _finish_db(con)
-    return dict(stats)
-
-
 def _int(value: str | None) -> int | None:
     try:
         return int(value) if value not in (None, ".") else None

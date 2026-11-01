@@ -60,11 +60,11 @@ class Transcript:
     def base_accession(self) -> str:
         return self.accession.split(".")[0]
 
-    @property
+    @cached_property
     def tx_low(self) -> int:
         return min(start for start, _ in self.exons)
 
-    @property
+    @cached_property
     def tx_high(self) -> int:
         return max(end for _, end in self.exons)
 

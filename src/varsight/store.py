@@ -11,6 +11,7 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
+from .bigwig import BigWig
 from .errors import DataError, InputError
 from .genome import FastaFile, Genome
 from .transcripts import Transcript
@@ -18,6 +19,7 @@ from .transcripts import Transcript
 MANIFEST = "manifest.json"
 DB_DIR = "db"
 GENOME_DIR = "genome"
+SCORE_DIR = "scores"
 SCHEMA_VERSION = 1
 
 
@@ -76,7 +78,7 @@ class DataStore:
         self.data_dir = Path(data_dir).expanduser()
         path = self.data_dir / MANIFEST
         if not path.is_file():
-            raise DataError(f"no VarSight data in {self.data_dir}; run: varsight setup --data-dir {self.data_dir}")
+            raise DataError(f"no VarSight data in {self.data_dir}; run: varsight setup data={self.data_dir}")
         with open(path, encoding="utf-8") as handle:
             self.manifest = json.load(handle)
         if self.manifest.get("schema") != SCHEMA_VERSION:
@@ -87,6 +89,8 @@ class DataStore:
         self._connections: dict[str, sqlite3.Connection | None] = {}
         self._genomes: dict[str, Genome] = {}
         self._rcrs: FastaFile | None = None
+        self._score_files: dict[str, BigWig] = {}
+        self.sql_log: list | None = None
         self._transcript_cache: dict[tuple[str, str], Transcript] = {}
         self.gene_symbol = lru_cache(maxsize=4096)(self._gene_symbol)
 
@@ -106,6 +110,9 @@ class DataStore:
         if name not in self._connections:
             path = self._overrides.get(name) or self.data_dir / DB_DIR / f"{name}.sqlite"
             self._connections[name] = open_readonly(path) if Path(path).is_file() else None
+            if self.sql_log is not None and self._connections[name] is not None:
+                # Used by "varsight explain" to show which query ran against which file.
+                self._connections[name].set_trace_callback(lambda statement, db=name: self.sql_log.append((db, statement)))
         return self._connections[name]
 
     def has(self, name: str) -> bool:
@@ -116,7 +123,7 @@ class DataStore:
         if genome is None:
             fasta = self.data_dir / GENOME_DIR / f"{build}.fa"
             if not fasta.is_file():
-                raise DataError(f"the {build} reference is not installed; run: varsight setup --build {build}")
+                raise DataError(f"the {build} reference is not installed; run: varsight setup build={build}")
             rcrs = None
             if build == "hg19":
                 hg38 = self.data_dir / GENOME_DIR / "hg38.fa"
@@ -138,6 +145,9 @@ class DataStore:
         if self._rcrs is not None:
             self._rcrs.close()
             self._rcrs = None
+        for reader in self._score_files.values():
+            reader.close()
+        self._score_files.clear()
 
     # transcripts
     def _make_transcript(self, build: str, row: sqlite3.Row) -> Transcript:
@@ -172,7 +182,7 @@ class DataStore:
     def _transcripts_db(self, build: str) -> sqlite3.Connection:
         db = self._db(f"transcripts.{build}")
         if db is None:
-            raise DataError(f"transcripts for {build} are not installed; run: varsight setup --build {build}")
+            raise DataError(f"transcripts for {build} are not installed; run: varsight setup build={build}")
         return db
 
     def transcripts_at(
@@ -316,21 +326,58 @@ class DataStore:
             return []
         return db.execute("SELECT * FROM civic_variants WHERE gene=? AND upper(variant)=?", (gene, name.upper())).fetchall()
 
-    def alphamissense(self, build: str, contig: str, pos: int, ref: str, alt: str) -> sqlite3.Row | None:
-        db = self._db(f"alphamissense.{build}")
-        if db is None:
-            return None
-        return db.execute(
-            "SELECT * FROM alphamissense WHERE contig=? AND pos=? AND ref=? AND alt=?", (contig, pos, ref, alt)
-        ).fetchone()
+    # advanced databases
 
-    def gnomad(self, build: str, contig: str, pos: int, ref: str, alt: str) -> sqlite3.Row | None:
-        db = self._db(f"gnomad.{build}")
+    def installed(self) -> list[str]:
+        return list(self.manifest.get("files", {}))
+
+    def advanced_variant(self, name: str, build: str, contig: str, pos: int, ref: str, alt: str) -> sqlite3.Row | None:
+        db = self._db(f"{name}.{build}")
         if db is None:
             return None
+        return db.execute("SELECT * FROM variants WHERE contig=? AND pos=? AND ref=? AND alt=?", (contig, pos, ref, alt)).fetchone()
+
+    def dbsnp_by_rsid(self, build: str, rsid: str) -> list[sqlite3.Row]:
+        db = self._db(f"dbsnp.{build}")
+        return db.execute("SELECT * FROM variants WHERE rsid=?", (rsid,)).fetchall() if db else []
+
+    def advanced_sv(self, build: str, contig: str, pos: int, limit: int = 5) -> list[sqlite3.Row]:
+        db = self._db(f"gnomad_sv.{build}")
+        if db is None:
+            return []
+        bins = bins_for_range(pos - 1, pos)
+        marks = ",".join("?" * len(bins))
         return db.execute(
-            "SELECT * FROM gnomad WHERE contig=? AND pos=? AND ref=? AND alt=?", (contig, pos, ref, alt)
-        ).fetchone()
+            f"SELECT * FROM intervals WHERE contig=? AND bin IN ({marks}) AND start<=? AND end>=? AND filter='PASS' ORDER BY af DESC",
+            [contig, *bins, pos, pos],
+        ).fetchmany(limit)
+
+    def advanced_hotspots(self, gene: str, residue: int) -> list[sqlite3.Row]:
+        """Every hotspot covering this residue, most tumours first. One residue can be in several."""
+        db = self._db("hotspots")
+        if db is None:
+            return []
+        return db.execute("SELECT * FROM hotspots WHERE gene=? AND start<=? AND end>=? ORDER BY tumor_count DESC", (gene, residue, residue)).fetchall()
+
+    def advanced_clingen(self, variation_id: int) -> sqlite3.Row | None:
+        db = self._db("clingen_variants")
+        return db.execute("SELECT * FROM classifications WHERE variation_id=?", (variation_id,)).fetchone() if db else None
+
+    def advanced_gene(self, name: str, table: str, symbol: str) -> list[sqlite3.Row]:
+        if (name, table) not in (("decipher", "genes"), ("decipher", "ddg2p"), ("cosmic_census", "genes"), ("cosmic_fusions", "fusions"), ("omim", "genes")):
+            raise ValueError(f"unknown advanced table {name}.{table}")
+        db = self._db(name)
+        return db.execute(f"SELECT * FROM {table} WHERE symbol=?", (symbol,)).fetchall() if db else []
+
+    def phylop(self, build: str, contig: str, position: int) -> float | None:
+        reader = self._score_files.get(build)
+        if reader is None:
+            path = self.data_dir / SCORE_DIR / f"phylop.{build}.bw"
+            if not path.is_file():
+                return None
+            reader = BigWig(path)
+            self._score_files[build] = reader
+        return reader.value(contig, position)
 
     def liftover_db(self, source: str, target: str) -> sqlite3.Connection | None:
         return self._db(f"liftover.{source}_{target}")

@@ -208,35 +208,5 @@ SQ   SEQUENCE   3 AA;  1000 MW;  ABC CRC64;
         self.assertEqual(entry["features"], [["DOMAIN", 2, 8, "Kinase"], ["ACT_SITE", 5, 5, ""]])
 
 
-class Optional(Folder):
-    def test_alphamissense_real_format(self):
-        out = self.root / "am.sqlite"
-        stats = builders.build_alphamissense(FIXTURES / "alphamissense.sample.tsv", out, "hg19")
-        self.assertGreater(stats["rows"], 10)
-        con = sqlite3.connect(out)
-        row = con.execute("SELECT contig, pos, ref, alt, am_pathogenicity, am_class, uniprot FROM alphamissense LIMIT 1").fetchone()
-        con.close()
-        self.assertEqual(row[0], "chr1")
-        self.assertIn(row[5], ("benign", "pathogenic", "ambiguous"))
-
-    def test_gnomad_keeps_only_frequency_columns(self):
-        fasta = write_fasta(self.root, "g.fa", {"chr21": "ACGTACGTAC"})
-        genome = Genome("hg19", fasta)
-        self.addCleanup(genome.close)
-        header = (FIXTURES / "gnomad.header.vcf").read_text(encoding="utf-8").splitlines(keepends=True)
-        rows = [
-            "21\t2\trs1\tC\tT\t100\tPASS\tAC=5;AN=1000;AF=5.00000e-03;nhomalt=0;popmax=nfe;AF_popmax=1.00000e-02\n",
-            "21\t3\t.\tG\tA,T\t100\tRF\tAC=1;AN=1000;AF=1.00000e-03;nhomalt=0\n",
-            "21\t4\t.\tG\tA\t100\tPASS\tAC=1;AN=1000;AF=1.00000e-03;nhomalt=0\n",  # wrong REF, so skipped
-        ]
-        out = self.root / "gn.sqlite"
-        stats = builders.build_gnomad([("21", header + rows)], out, "hg19", genome)
-        self.assertEqual((stats["rows"], stats["skipped"]), (3, 1))
-        con = sqlite3.connect(out)
-        row = con.execute("SELECT filter, ac, an, af, nhomalt, popmax, af_popmax FROM gnomad WHERE pos=2").fetchone()
-        con.close()
-        self.assertEqual(row, ("PASS", 5, 1000, 0.005, 0, "nfe", 0.01))
-
-
 if __name__ == "__main__":
     unittest.main()

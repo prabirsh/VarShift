@@ -65,16 +65,20 @@ class Resolver:
     # rs
     def _from_rsid(self, parsed: ParsedInput, build: str) -> list[Candidate]:
         rows = self.store.clinvar_by_rsid(build, parsed.rsid)
+        known_to_clinvar = bool(rows)
+        if not rows:
+            rows = self.store.dbsnp_by_rsid(build, parsed.rsid)
         if not rows:
             raise ResolveError(
-                f"rs{parsed.rsid} is not in the local ClinVar for {build}. VarSight has no full dbSNP; "
-                "give the position or the HGVS name instead."
+                f"rs{parsed.rsid} is not in the databases installed for {build}. An rs number needs ClinVar to "
+                "have it, or dbSNP installed (varsight add dbsnp). You can also give the position or the HGVS name."
             )
         genome = self.store.genome(build)
         found = []
         for row in rows:
             variant = normalize(genome, row["contig"], row["pos"], row["ref"], row["alt"])
-            found.append(Candidate(variant, via="clinvar_rsid", in_clinvar=True, bases_changed=_size(variant)))
+            source = "clinvar_rsid" if known_to_clinvar else "dbsnp_rsid"
+            found.append(Candidate(variant, via=source, in_clinvar=known_to_clinvar, bases_changed=_size(variant)))
         return _rank(found)
 
     # c.

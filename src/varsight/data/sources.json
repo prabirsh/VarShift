@@ -12,7 +12,14 @@
     "ftp.clinicalgenome.org",
     "github.com",
     "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com"
+    "release-assets.githubusercontent.com",
+    "ftp.ncbi.nih.gov",
+    "ftp.1000genomes.ebi.ac.uk",
+    "rothsj06.dmz.hpc.mssm.edu",
+    "www.cancerhotspots.org",
+    "www.deciphergenomics.org",
+    "www.ebi.ac.uk",
+    "erepo.clinicalgenome.org"
   ],
   "sources": {
     "hg19_fasta": {
@@ -149,6 +156,68 @@
       "max_mb": 100,
       "license": "CC0 per CIViC"
     },
+    "dbsnp_hg19": {
+      "name": "dbSNP build 157, GRCh37",
+      "url": "https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.25.gz",
+      "stream": true,
+      "max_mb": 40000,
+      "license": "NCBI places no restrictions on reuse"
+    },
+    "dbsnp_hg38": {
+      "name": "dbSNP build 157, GRCh38",
+      "url": "https://ftp.ncbi.nih.gov/snp/latest_release/VCF/GCF_000001405.40.gz",
+      "stream": true,
+      "max_mb": 40000,
+      "license": "NCBI places no restrictions on reuse"
+    },
+    "g1k_hg19": {
+      "name": "1000 Genomes phase 3 sites",
+      "url": "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5c.20130502.sites.vcf.gz",
+      "stream": true,
+      "max_mb": 3000,
+      "license": "Open data from the International Genome Sample Resource"
+    },
+    "g1k_hg38": {
+      "name": "1000 Genomes sites, GRCh38",
+      "url": "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/release/20190312_biallelic_SNV_and_INDEL/ALL.wgs.shapeit2_integrated_snvindels_v2a.GRCh38.27022019.sites.vcf.gz",
+      "stream": true,
+      "max_mb": 3000,
+      "license": "Open data from the International Genome Sample Resource"
+    },
+    "gnomad_hg19": {
+      "name": "gnomAD v2.1.1 exomes",
+      "url_template": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/vcf/exomes/gnomad.exomes.r2.1.1.sites.{chrom}.vcf.bgz",
+      "stream": true,
+      "max_mb": 12000,
+      "license": "Public release; check gnomad.broadinstitute.org for terms"
+    },
+    "gnomad_hg38": {
+      "name": "gnomAD v2.1.1 exomes, GRCh38 liftover",
+      "url_template": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/liftover_grch38/vcf/exomes/gnomad.exomes.r2.1.1.sites.{chrom}.liftover_grch38.vcf.bgz",
+      "stream": true,
+      "max_mb": 16000,
+      "license": "Public release; check gnomad.broadinstitute.org for terms"
+    },
+    "gnomad_sv_hg19": {
+      "name": "gnomAD SV v2.1",
+      "url": "https://storage.googleapis.com/gcp-public-data--gnomad/papers/2019-sv/gnomad_v2.1_sv.sites.vcf.gz",
+      "stream": true,
+      "max_mb": 1000,
+      "license": "Public release; check gnomad.broadinstitute.org for terms"
+    },
+    "gnomad_sv_hg38": {
+      "name": "gnomAD SV v4.1",
+      "url": "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/genome_sv/gnomad.v4.1.sv.sites.vcf.gz",
+      "stream": true,
+      "max_mb": 4000,
+      "license": "Public release; check gnomad.broadinstitute.org for terms"
+    },
+    "revel": {
+      "name": "REVEL v1.3",
+      "url": "https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip",
+      "max_mb": 1500,
+      "license": "Check the REVEL site for terms before any commercial use"
+    },
     "alphamissense_hg19": {
       "name": "AlphaMissense hg19",
       "url": "https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg19.tsv.gz",
@@ -161,28 +230,368 @@
       "max_mb": 1500,
       "license": "The file header says CC BY-NC-SA 4.0 (non-commercial); a later Zenodo record says CC BY 4.0"
     },
-    "gnomad_hg19": {
-      "name": "gnomAD v2.1.1 exomes",
-      "url_template": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/vcf/exomes/gnomad.exomes.r2.1.1.sites.{chrom}.vcf.bgz",
-      "stream": true,
+    "phylop_hg19": {
+      "name": "phyloP 100 vertebrates, hg19",
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/phyloP100way/hg19.100way.phyloP100way.bw",
       "max_mb": 12000,
-      "license": "gnomAD public release; confirm terms for your use at gnomad.broadinstitute.org"
+      "license": "UCSC states genome data is free for public and commercial use"
+    },
+    "phylop_hg38": {
+      "name": "phyloP 100 vertebrates, hg38",
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phyloP100way/hg38.phyloP100way.bw",
+      "max_mb": 12000,
+      "license": "UCSC states genome data is free for public and commercial use"
+    },
+    "hotspots": {
+      "name": "Cancer Hotspots",
+      "url": "https://www.cancerhotspots.org/api/hotspots/single",
+      "max_mb": 50,
+      "license": "Public website; check cancerhotspots.org for terms"
+    },
+    "decipher_hi": {
+      "name": "DECIPHER haploinsufficiency predictions",
+      "url": "https://www.deciphergenomics.org/files/downloads/HI_Predictions_Version3.bed.gz",
+      "max_mb": 20,
+      "license": "Public download; check deciphergenomics.org for terms"
+    },
+    "ddg2p": {
+      "name": "DDG2P from Gene2Phenotype",
+      "url": "https://www.ebi.ac.uk/gene2phenotype/api/panel/DD/download",
+      "max_mb": 50,
+      "license": "Public download; check the Gene2Phenotype site for terms"
+    },
+    "clingen_variants": {
+      "name": "ClinGen Evidence Repository",
+      "url": "https://erepo.clinicalgenome.org/evrepo/api/classifications/all?format=tabbed",
+      "max_mb": 200,
+      "license": "CC0, per ClinGen"
     }
   },
   "artifacts": {
-    "genome.hg19": {"sources": ["hg19_fasta"], "build": "hg19", "policy": "once", "kind": "genome"},
-    "genome.hg38": {"sources": ["hg38_fasta"], "build": "hg38", "policy": "once", "kind": "genome"},
-    "liftover.hg19_hg38": {"sources": ["chain_hg19_hg38"], "builds": ["hg19", "hg38"], "policy": "once", "kind": "liftover"},
-    "liftover.hg38_hg19": {"sources": ["chain_hg38_hg19"], "builds": ["hg19", "hg38"], "policy": "once", "kind": "liftover"},
-    "transcripts.hg19": {"sources": ["refseq_hg19", "gencode_hg19", "mane"], "build": "hg19", "policy": "approval", "kind": "transcripts"},
-    "transcripts.hg38": {"sources": ["refseq_hg38", "gencode_hg38", "mane"], "build": "hg38", "policy": "approval", "kind": "transcripts"},
-    "clinvar.hg19": {"sources": ["clinvar_hg19", "clinvar_summary"], "build": "hg19", "policy": "auto", "kind": "clinvar"},
-    "clinvar.hg38": {"sources": ["clinvar_hg38", "clinvar_summary"], "build": "hg38", "policy": "auto", "kind": "clinvar"},
-    "genes": {"sources": ["hgnc", "clingen_validity", "clingen_dosage", "gnomad_constraint", "hpo_diseases"], "policy": "auto", "kind": "genes"},
-    "proteins": {"sources": ["uniprot", "pfam_regions"], "policy": "auto", "kind": "proteins"},
-    "civic": {"sources": ["civic_variants", "civic_evidence"], "policy": "auto", "kind": "civic"},
-    "alphamissense.hg19": {"sources": ["alphamissense_hg19"], "build": "hg19", "policy": "optional", "kind": "alphamissense"},
-    "alphamissense.hg38": {"sources": ["alphamissense_hg38"], "build": "hg38", "policy": "optional", "kind": "alphamissense"},
-    "gnomad.hg19": {"sources": ["gnomad_hg19"], "build": "hg19", "policy": "optional", "kind": "gnomad"}
+    "genome.hg19": {
+      "sources": [
+        "hg19_fasta"
+      ],
+      "build": "hg19",
+      "policy": "once",
+      "kind": "genome",
+      "title": "hg19 reference"
+    },
+    "genome.hg38": {
+      "sources": [
+        "hg38_fasta"
+      ],
+      "build": "hg38",
+      "policy": "once",
+      "kind": "genome",
+      "title": "hg38 reference"
+    },
+    "liftover.hg19_hg38": {
+      "sources": [
+        "chain_hg19_hg38"
+      ],
+      "builds": [
+        "hg19",
+        "hg38"
+      ],
+      "policy": "once",
+      "kind": "liftover",
+      "title": "hg19 to hg38 mapping"
+    },
+    "liftover.hg38_hg19": {
+      "sources": [
+        "chain_hg38_hg19"
+      ],
+      "builds": [
+        "hg19",
+        "hg38"
+      ],
+      "policy": "once",
+      "kind": "liftover",
+      "title": "hg38 to hg19 mapping"
+    },
+    "transcripts.hg19": {
+      "sources": [
+        "refseq_hg19",
+        "gencode_hg19",
+        "mane"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "transcripts",
+      "title": "transcripts (hg19)"
+    },
+    "transcripts.hg38": {
+      "sources": [
+        "refseq_hg38",
+        "gencode_hg38",
+        "mane"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "transcripts",
+      "title": "transcripts (hg38)"
+    },
+    "clinvar.hg19": {
+      "sources": [
+        "clinvar_hg19",
+        "clinvar_summary"
+      ],
+      "build": "hg19",
+      "policy": "auto",
+      "kind": "clinvar",
+      "title": "ClinVar"
+    },
+    "clinvar.hg38": {
+      "sources": [
+        "clinvar_hg38",
+        "clinvar_summary"
+      ],
+      "build": "hg38",
+      "policy": "auto",
+      "kind": "clinvar",
+      "title": "ClinVar"
+    },
+    "genes": {
+      "sources": [
+        "hgnc",
+        "clingen_validity",
+        "clingen_dosage",
+        "gnomad_constraint",
+        "hpo_diseases"
+      ],
+      "policy": "auto",
+      "kind": "genes",
+      "title": "gene tables (HGNC, ClinGen, HPO)"
+    },
+    "proteins": {
+      "sources": [
+        "uniprot",
+        "pfam_regions"
+      ],
+      "policy": "auto",
+      "kind": "proteins",
+      "title": "UniProt and Pfam"
+    },
+    "civic": {
+      "sources": [
+        "civic_variants",
+        "civic_evidence"
+      ],
+      "policy": "auto",
+      "kind": "civic",
+      "title": "CIViC"
+    },
+    "dbsnp.hg19": {
+      "sources": [
+        "dbsnp_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "dbsnp",
+      "title": "dbSNP"
+    },
+    "thousand_genomes.hg19": {
+      "sources": [
+        "g1k_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "thousand_genomes",
+      "title": "1000 Genomes"
+    },
+    "gnomad.hg19": {
+      "sources": [
+        "gnomad_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "gnomad",
+      "title": "gnomAD"
+    },
+    "gnomad_sv.hg19": {
+      "sources": [
+        "gnomad_sv_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "gnomad_sv",
+      "title": "gnomAD SV"
+    },
+    "revel.hg19": {
+      "sources": [
+        "revel"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "revel",
+      "title": "REVEL"
+    },
+    "alphamissense.hg19": {
+      "sources": [
+        "alphamissense_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "alphamissense",
+      "title": "AlphaMissense"
+    },
+    "phylop.hg19": {
+      "sources": [
+        "phylop_hg19"
+      ],
+      "build": "hg19",
+      "policy": "approval",
+      "kind": "phylop",
+      "title": "phyloP"
+    },
+    "spliceai.hg19": {
+      "sources": [],
+      "build": "hg19",
+      "policy": "own_file",
+      "kind": "spliceai",
+      "title": "spliceai"
+    },
+    "primateai.hg19": {
+      "sources": [],
+      "build": "hg19",
+      "policy": "own_file",
+      "kind": "primateai",
+      "title": "primateai"
+    },
+    "cosmic.hg19": {
+      "sources": [],
+      "build": "hg19",
+      "policy": "own_file",
+      "kind": "cosmic",
+      "title": "cosmic"
+    },
+    "dbsnp.hg38": {
+      "sources": [
+        "dbsnp_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "dbsnp",
+      "title": "dbSNP"
+    },
+    "thousand_genomes.hg38": {
+      "sources": [
+        "g1k_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "thousand_genomes",
+      "title": "1000 Genomes"
+    },
+    "gnomad.hg38": {
+      "sources": [
+        "gnomad_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "gnomad",
+      "title": "gnomAD"
+    },
+    "gnomad_sv.hg38": {
+      "sources": [
+        "gnomad_sv_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "gnomad_sv",
+      "title": "gnomAD SV"
+    },
+    "revel.hg38": {
+      "sources": [
+        "revel"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "revel",
+      "title": "REVEL"
+    },
+    "alphamissense.hg38": {
+      "sources": [
+        "alphamissense_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "alphamissense",
+      "title": "AlphaMissense"
+    },
+    "phylop.hg38": {
+      "sources": [
+        "phylop_hg38"
+      ],
+      "build": "hg38",
+      "policy": "approval",
+      "kind": "phylop",
+      "title": "phyloP"
+    },
+    "spliceai.hg38": {
+      "sources": [],
+      "build": "hg38",
+      "policy": "own_file",
+      "kind": "spliceai",
+      "title": "spliceai"
+    },
+    "primateai.hg38": {
+      "sources": [],
+      "build": "hg38",
+      "policy": "own_file",
+      "kind": "primateai",
+      "title": "primateai"
+    },
+    "cosmic.hg38": {
+      "sources": [],
+      "build": "hg38",
+      "policy": "own_file",
+      "kind": "cosmic",
+      "title": "cosmic"
+    },
+    "hotspots": {
+      "sources": [
+        "hotspots"
+      ],
+      "policy": "auto",
+      "kind": "hotspots",
+      "title": "Cancer Hotspots"
+    },
+    "decipher": {
+      "sources": [
+        "decipher_hi",
+        "ddg2p"
+      ],
+      "policy": "auto",
+      "kind": "decipher",
+      "title": "DECIPHER"
+    },
+    "clingen_variants": {
+      "sources": [
+        "clingen_variants"
+      ],
+      "policy": "auto",
+      "kind": "clingen_variants",
+      "title": "ClinGen variant classifications"
+    },
+    "cosmic_census": {
+      "sources": [],
+      "policy": "own_file",
+      "kind": "cosmic_census",
+      "title": "cosmic_census"
+    },
+    "cosmic_fusions": {
+      "sources": [],
+      "policy": "own_file",
+      "kind": "cosmic_fusions",
+      "title": "cosmic_fusions"
+    },
+    "omim": {
+      "sources": [],
+      "policy": "own_file",
+      "kind": "omim",
+      "title": "omim"
+    }
   }
 }

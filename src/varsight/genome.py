@@ -127,7 +127,7 @@ class Genome:
     def fetch(self, contig: str, start: int, end: int) -> str:
         if contig == "chrMT":
             if self._rcrs is None:
-                raise DataError("the rCRS sequence needs the hg38 reference; run: varsight setup --build hg38")
+                raise DataError("the rCRS sequence needs the hg38 reference; run: varsight setup build=hg38")
             return self._rcrs.fetch("chrM", start, end)
         return self._fasta.fetch(contig, start, end)
 

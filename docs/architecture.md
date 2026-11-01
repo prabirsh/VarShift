@@ -5,7 +5,7 @@ VarSight is a small Python package with no runtime dependencies. Each module has
 ## Modules
 
 | Module | Job |
-|---|---|
+| - | - |
 | `inputs.py` | Decide what kind of description a piece of text is |
 | `hgvs.py` | Parse c., g. and p. change descriptions |
 | `builds.py` | Contig names, lengths and accessions for hg19 and hg38; work out a VCF's build |
@@ -16,12 +16,22 @@ VarSight is a small Python package with no runtime dependencies. Each module has
 | `liftover.py` | Map a variant between builds and repeat the REF check |
 | `consequence.py` | Effect, exon, and HGVS c. and p. names for one transcript |
 | `store.py` | Read-only access to the local databases |
+| `bigwig.py` | Read single values from a bigWig file, for phyloP |
 | `annotate.py` | Run the steps for one variant and assemble the result |
+| `priority.py` | Sort results for review, with reasons |
+| `advanced.py` | What each advanced database is, how to get it, and which columns it adds |
 | `links.py`, `data/links.json` | Build labelled reference links from templates |
-| `vcf.py`, `batch.py` | Stream a VCF or a list |
-| `output.py`, `xlsx.py` | Write JSON, TSV or Excel |
+| `vcf.py`, `batch.py` | Stream a VCF or a list, on several processes for a large file |
+| `output.py`, `xlsx.py`, `report.py`, `data/report_template.html` | Write the screen card, Excel, the HTML report, TSV and JSON |
+| `flags.py` | Each warning in plain words, with what to do |
+| `commandline.py`, `cli.py` | Read the command line, and run each command |
+| `config.py` | Saved settings, and where the data folder is |
+| `updates.py` | The quick notice when a newer database exists. **The only module that starts a process of its own for this check**, and it takes no input about variants |
+| `explain.py` | Print each step, file and query for one variant |
 | `pipeline/fetch.py` | Downloads. **The only module that opens a network connection** |
-| `pipeline/builders.py` | Turn source files into databases |
+| `pipeline/builders.py`, `pipeline/advanced_builders.py` | Turn source files into databases |
+| `pipeline/updatecheck.py` | The background half of the update notice |
+| `pipeline/benchmark.py` | Measure speed and memory on this computer |
 | `pipeline/manager.py` | First setup, updates, rollback, checksums |
 | `pipeline/selftest.py`, `data/known_variants.json` | Known variants, checked after setup and before each update |
 | `pipeline/validate.py` | Measure accuracy against ClinVar's names |
@@ -41,6 +51,9 @@ varsight-data/
     genes.sqlite         HGNC, ClinGen, gnomAD constraint, HPO
     proteins.sqlite      UniProt, Pfam regions
     civic.sqlite
+    dbsnp.hg19.sqlite, revel.hg38.sqlite, ...   only the advanced databases you added
+  scores/                phyloP, if you added it, as the original bigWig files
+  update_status.json     what the last update check found
   snapshots/             the previous version of anything updated
   reports/               a report of each setup and update
   cache/                 the human rows kept from Pfam, so an update need not re-read 5 GB
@@ -50,13 +63,19 @@ One file per source and build means a weekly update replaces only what changed. 
 
 ## Design decisions
 
-**Why own the HGVS code instead of wrapping VEP?** VEP needs a Perl stack and a large cache per build, and was a poor fit for a laptop with 4 GB of RAM. It also doesn't take a protein change as input on its own. The accuracy risk of writing this ourselves is real, so `validate` measures it against ClinVar on every change.
+**Why own the HGVS code instead of wrapping VEP?** VEP needs a Perl stack and a large cache per build, which was a poor fit for a laptop with 4 GB of RAM. The accuracy risk of writing this ourselves is real, so `validate` measures it against ClinVar on every change.
 
-**Why SQLite?** It comes with Python and needs no server. On a WSL Linux disk, a lookup measured 27 microseconds. Files open read-only, so nothing can change the data during a lookup.
+**Why SQLite?** It comes with Python and needs no server. On a WSL Linux disk, a lookup measured 27 microseconds. Files open read-only, so nothing can change the data during a lookup. [How lookups work](how-lookups-work.md) goes through it step by step.
 
-**Why only standard-library code?** A tool that handles patient data benefits from having nothing to install and no dependency chain to trust. It also makes `git clone` and `./install.sh` all that's needed.
+**Why only standard-library code?** A tool that handles patient data benefits from having nothing to install and no dependency chain to trust. It also makes `git clone` and one install script all that's needed, on Linux and Windows alike.
 
 **Why keep every candidate?** Picking one DNA change for a protein name would hide real ambiguity, so candidates are ranked and all shown.
+
+**Why word options instead of dashed ones?** `build=hg19 out=results.xlsx` reads the same on every system and needs no explaining, and the same style works in Bash, PowerShell and Command Prompt. Anyone who types dashes out of habit is still understood.
+
+**Why spawn for worker processes?** A forked child would inherit open SQLite connections, which SQLite warns against. Spawned workers open their own, on every system.
+
+**Why an interactive HTML file rather than a local server?** It needs nothing running, and can be emailed or filed with a case. [The options that were weighed](research.md#how-results-should-be-shown).
 
 **Why no merged verdict?** BRAF V600E shows why: ClinVar's aggregate says "Conflicting classifications of pathogenicity", while cancer sources call it oncogenic. A single merged answer would hide that disagreement.
 

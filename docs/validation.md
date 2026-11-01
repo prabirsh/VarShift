@@ -13,14 +13,14 @@ This page says what was tested, how, what came out, and what hasn't been proven.
 - **Names:** ClinVar's own c. and p. names, from the first 30 MB of `variant_summary`, giving 13,724 usable names per build.
 - **Bias:** those names are ClinVar's oldest records, in well-studied genes. Expect the whole genome to score lower.
 
-Date: 1 November 2026. Python 3.14.4 on WSL (Ubuntu 26.04).
+Date: 1 November 2026. Python 3.14.4 on WSL (Ubuntu 26.04). The whole run was repeated from freshly downloaded sources after the last code change on that date, and gave the same numbers.
 
 ## Results
 
 The full report, with examples from every mismatch group, is in [validation-results/clinvar-12-genes.md](validation-results/clinvar-12-genes.md).
 
 | Test | What it checks | hg19 | hg38 |
-|---|---|---:|---:|
+| - | - | -: | -: |
 | `forward_c_snv` | Genome position gives ClinVar's c. name | 99.98% (9,085 of 9,087) | 99.99% (9,086 of 9,087) |
 | `forward_c_indel` | The same, for indels | 99.83% (4,022 of 4,029) | 99.83% (4,022 of 4,029) |
 | `forward_p_snv` | Genome position gives ClinVar's p. name | 99.99% (6,945 of 6,946) | 99.99% (6,945 of 6,946) |
@@ -69,7 +69,7 @@ Run on local annotated VCFs from the author's samples. Only counts are recorded.
 After a full setup, you can run the same comparison on your own files. It stays on your computer:
 
 ```bash
-python3 tools/compare_annotated_vcf.py sample.annotated.vcf.gz --differences differences.txt
+python3 tools/compare_annotated_vcf.py sample.annotated.vcf.gz differences=differences.txt
 ```
 
 ## Unit and integration tests
@@ -84,34 +84,46 @@ The suite covers:
 - **Coordinates:** every base of a transcript round-trips between genome and c. numbering.
 - **Parsers:** many input spellings, change types and hostile text.
 - **Source parsers:** real-format samples, and failure when a format changes.
+- **Advanced databases:** samples cut from each real public file, and each provider's documented columns where a file needs an account. Adding, using and removing them against a local server.
+- **The command line and setup questions:** every answer to the setup menu, and each command in these docs is parsed by the real parser.
+- **The update notice:** when it appears, when it doesn't, and that it never stops annotation.
+- **Reports:** the sheets and their order in Excel, sorting, hostile text in the HTML report, and the row limit.
+- **House rules:** a test reads every file in the package for double hyphens and long dashes.
 - **Downloads:** against a real local HTTP server, including dropped connections, resume, bad checksums, damaged archives, oversized files and blocked redirects.
 - **The data lifecycle:** setup, update, rollback, refused updates, approval and tampering.
 - **Security rules:** the source code itself is read, and tests fail if forbidden patterns appear.
 
+## Install and command checks
+
+Run on 1 November 2026, from a copy holding only the files git would commit:
+
+| Check | Result |
+| - | - |
+| `sh install.sh test=yes` on WSL Ubuntu | Installed, all tests passed, demo finished with 11 of 11 known variants |
+| `install.ps1 -Test` in PowerShell | The same on Windows, with 4 tests skipped because they cover POSIX file modes |
+| `install.bat` in Command Prompt | Installed. `varsight version` and `varsight demo` work there |
+| `pip install .` in a new Windows environment | Installed with no dependencies, and the report template is packaged |
+| About 50 command lines through the installed launcher, on both systems | Exit code and text checked for every command, including wrong input. `NM_004333.6:c.1799T>A` keeps its `>` from PowerShell and Command Prompt |
+| `workers=2` against `workers=1` | Byte-for-byte the same file |
+| `tools/check_sources.py` | All 38 download sources answered, within their size limits |
+
+Testing against the real Cancer Hotspots file found a bug the small sample couldn't show: a wide in-frame indel region hid the single-residue BRAF V600 row. It is fixed, and those two rows are now in the test sample.
+
 ## Speed and memory
 
-Measured with public ClinVar records from the 12 genes, in a VCF of 3,409 lines, with the data on the WSL Linux disk. WSL had 1.8 GB of memory.
-
-| Task | Time | Peak memory |
-|---|---:|---:|
-| One variant | About 3 to 5 ms | |
-| VCF to TSV | 10 to 15 s | About 100 MB |
-| VCF to Excel | About 15 s | About 150 MB |
-| VCF to JSON Lines | 10 to 14 s | About 150 MB |
-
-The test databases are much smaller than full ones, so expect slower results on real data, particularly on the first run after a reboot.
-
-**Keep the data on the Linux disk.** SQLite lookups measured 27 microseconds on the WSL Linux disk and 1.3 to 1.8 ms on a Windows drive seen from WSL (`/mnt/i`), about 50 to 65 times slower.
+See [benchmarks](benchmarks.md).
 
 ## Not proven yet
 
 | What | Status | How to close it |
-|---|---|---|
-| Full-genome accuracy | Only 12 genes tested | `varsight validate --sample 20000 --report validation.md` after setup |
+| - | - | - |
+| Full-genome accuracy | Only 12 genes tested | `varsight validate sample=20000 report=validation.md` after setup |
 | Full setup | Sources and formats checked, and the cycle tested on a local server, but the 8 GB run has not been done | Run `varsight setup` |
 | Real setup time and size | Estimates | The report in `reports/` records them |
-| GENCODE, AlphaMissense and gnomAD builders | Tested on small real-format samples only | Run them on full files |
+| GENCODE and the advanced database builders | Tested on samples of real files only. See [how much of this has been tested](data-sources.md#how-much-of-this-has-been-tested) | Run them on full files |
+| COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | Written from documented columns, without a real file | Add your own file. It stops with a clear message if the columns differ |
 | Python 3.10 to 3.13 | Not run yet | CI, once on GitHub |
-| Excel itself | Checked with a separate reader (openpyxl) with zero formula cells, but not opened in Microsoft Excel | Open a result in Excel |
+| Excel itself | Checked with a separate reader (openpyxl): five sheets in order, filters, frozen headers, colours and links, with no warnings. Not opened in Microsoft Excel | Open a result in Excel |
+| HTML report | Tested in Chromium: filters, search, sort, details panel, keyboard, TSV export, light and dark, phone width. Not tested in Firefox or Safari | Open one there |
 | Link formats | See [the table](data-sources.md#reference-links); VarSome, OMIM and UCSC unconfirmed | Click them in a normal browser |
-| The weekly Windows task | The script's syntax was checked, but it was not registered or run | Follow [the guide](updates.md) |
+| The weekly Windows task | A dry run reaches the register step in both forms, and the exact commands it launches were run and worked. The task itself has not been registered, since that changes your computer's schedule | Follow [the guide](updates.md) |

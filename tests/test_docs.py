@@ -1,6 +1,7 @@
 """The documentation stays honest: every warning is explained, and links and commands really exist."""
 
 import re
+import shlex
 import unittest
 from pathlib import Path
 
@@ -52,22 +53,34 @@ class Links(unittest.TestCase):
 
 
 class Commands(unittest.TestCase):
-    def test_commands_in_the_docs_exist(self):
-        from varsight.cli import _build_parser
+    def test_commands_in_the_docs_are_really_accepted(self):
+        """Every line starting with varsight must parse, so the docs can't drift from the code."""
+        from varsight.commandline import parse
+        from varsight.errors import InputError
 
-        parser = _build_parser()
+        checked = 0
         for doc in DOCS:
             for line in doc.read_text(encoding="utf-8").splitlines():
-                match = re.match(r"^\s*varsight ([a-z]+)(?: ([a-z]+))?", line)
-                if not match:
+                command = line.strip()
+                if not re.match(r"^varsight [a-z]+", command):
                     continue
-                arguments = [match.group(1)]
-                if match.group(1) == "data":
-                    arguments.append(match.group(2))
+                command = command.split("  #")[0].strip()
+                command = re.sub(r"\s{2,}\S.*$", "", command)
                 with self.subTest(doc=doc.name, line=line):
-                    if arguments[0] == "annotate":
-                        arguments.append("x")
-                    parser.parse_args(arguments)
+                    try:
+                        parse(shlex.split(command)[1:])
+                    except InputError as exc:
+                        self.fail(f"{doc.name}: {command}: {exc}")
+                    checked += 1
+        self.assertGreater(checked, 20)
+
+    def test_every_warning_has_plain_help(self):
+        from varsight.flags import FLAG_HELP
+
+        documented = (ROOT / "docs" / "input-output.md").read_text(encoding="utf-8")
+        for flag, (meaning, action) in FLAG_HELP.items():
+            self.assertTrue(meaning and action, flag)
+            self.assertIn(f"`{flag}`", documented, flag)
 
     def test_the_readme_names_every_requested_database(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

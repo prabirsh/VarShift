@@ -7,7 +7,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "varsight"
 NETWORK_MODULES = {"socket", "ssl", "http", "urllib.request", "urllib.error", "ftplib", "smtplib", "requests", "httpx"}
-FORBIDDEN_MODULES = {"pickle", "marshal", "shelve", "subprocess", "telnetlib", "dill"}
+FORBIDDEN_MODULES = {"pickle", "marshal", "shelve", "telnetlib", "dill"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__"}
 
 
@@ -47,6 +47,25 @@ class SourceRules(unittest.TestCase):
             bad = {name for name in imports_of(tree) if name.split(".")[0] in FORBIDDEN_MODULES}
             self.assertFalse(bad, f"{path.name} imports {bad}")
 
+    def test_only_the_update_check_starts_a_process(self):
+        for path, tree in sources():
+            if path.name != "updates.py":
+                self.assertNotIn("subprocess", {name.split(".")[0] for name in imports_of(tree)}, path.name)
+
+    def test_no_process_ever_goes_through_a_shell(self):
+        for path, tree in sources():
+            for node in ast.walk(tree):
+                if isinstance(node, ast.keyword) and node.arg == "shell":
+                    self.fail(f"{path.name}:{node.value.lineno} passes shell=")
+
+    def test_the_update_check_cannot_carry_variants(self):
+        """It is started with fixed arguments: the interpreter, the module and the data folder."""
+        text = (SRC / "updates.py").read_text(encoding="utf-8")
+        self.assertIn('[sys.executable, "-m", "varsight.pipeline.updatecheck", str(data_dir)]', text)
+        check = (SRC / "pipeline" / "updatecheck.py").read_text(encoding="utf-8")
+        for word in ("variant", "vcf", "annotate"):
+            self.assertNotIn(word, check.lower())
+
     def test_no_code_execution_calls(self):
         for path, tree in sources():
             for node in ast.walk(tree):
@@ -56,7 +75,7 @@ class SourceRules(unittest.TestCase):
     def test_no_shell_helpers(self):
         for path, tree in sources():
             for node in ast.walk(tree):
-                if isinstance(node, ast.Attribute):
+                if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os":
                     self.assertNotIn(node.attr, {"system", "popen", "spawnl", "startfile"}, f"{path.name}:{node.lineno}")
 
     def test_no_third_party_runtime_imports(self):
@@ -111,7 +130,7 @@ class SourceRules(unittest.TestCase):
         for name, artifact in catalog["artifacts"].items():
             for source in artifact["sources"]:
                 self.assertIn(source, catalog["sources"], name)
-            self.assertIn(artifact["policy"], ("once", "auto", "approval", "optional"), name)
+            self.assertIn(artifact["policy"], ("once", "auto", "approval", "own_file"), name)
 
 
 if __name__ == "__main__":

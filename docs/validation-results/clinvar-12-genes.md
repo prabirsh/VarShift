@@ -5,7 +5,7 @@
 13,724 ClinVar names tested in 53.7 s (256 per second).
 
 | Test | Passed | Total | Rate |
-|---|---:|---:|---:|
+| - | -: | -: | -: |
 | consequence_indel | 4,002 | 4,020 | 99.55% |
 | consequence_snv | 9,072 | 9,162 | 99.02% |
 | cross_build_indel | 4,070 | 4,070 | 100.00% |
@@ -26,7 +26,7 @@
 | reverse_p_snv | 6,948 | 6,948 | 100.00% |
 
 | Not scored | Count |
-|---|---:|
+| - | -: |
 | cross_build_no_clinvar_record | 1 |
 | protein_repeat_notation_not_compared | 4 |
 | repeat_notation_matched_by_position | 84 |
@@ -244,7 +244,7 @@ NM_000314.4:c.-1214T>G chr10-89623012-T-G (ClinVar 142999): no transcript fits c
 13,724 ClinVar names tested in 80.0 s (172 per second).
 
 | Test | Passed | Total | Rate |
-|---|---:|---:|---:|
+| - | -: | -: | -: |
 | consequence_indel | 4,002 | 4,020 | 99.55% |
 | consequence_snv | 9,073 | 9,163 | 99.02% |
 | cross_build_indel | 4,070 | 4,070 | 100.00% |
@@ -265,7 +265,7 @@ NM_000314.4:c.-1214T>G chr10-89623012-T-G (ClinVar 142999): no transcript fits c
 | reverse_p_snv | 6,948 | 6,948 | 100.00% |
 
 | Not scored | Count |
-|---|---:|
+| - | -: |
 | cross_build_no_clinvar_record | 1 |
 | protein_repeat_notation_not_compared | 4 |
 | repeat_notation_matched_by_position | 84 |

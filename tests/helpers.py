@@ -9,7 +9,9 @@ so a correct engine must give identical c. and p. names for both.
 
 from __future__ import annotations
 
+import struct
 import tempfile
+import zlib
 from pathlib import Path
 
 from varsight.genome import Genome, write_fai
@@ -75,3 +77,33 @@ class ToyGene:
     def close(self) -> None:
         self.genome.close()
         self._folder.cleanup()
+
+
+def tiny_bigwig() -> bytes:
+    """A real little-endian bigWig holding one block of each kind, with a two-level index."""
+    header_size = 64
+    tree_at = header_size
+    key = b"chr7\0\0"
+    tree = struct.pack("<IIIIQQ", 0x78CA8C91, 256, len(key), 8, 1, 0) + struct.pack("<BBH", 1, 0, 1) + key + struct.pack("<II", 0, 1000)
+    data_at = tree_at + len(tree)
+    body = bytearray(struct.pack("<Q", 3))
+
+    def block(start, end, step, span, kind, items, packed):
+        section = struct.pack("<IIIIIBBH", 0, start, end, step, span, kind, 0, items) + packed
+        compressed = zlib.compress(section)
+        offset = data_at + len(body)
+        body.extend(compressed)
+        return (0, start, 0, end, offset, len(compressed))
+
+    leaves = [
+        block(100, 103, 1, 1, 3, 3, struct.pack("<fff", 1.5, 2.5, 3.5)),
+        block(200, 206, 0, 1, 2, 2, struct.pack("<IfIf", 200, -1.0, 205, 7.25)),
+        block(300, 310, 0, 0, 1, 1, struct.pack("<IIf", 300, 310, 9.0)),
+    ]
+    index_at = data_at + len(body)
+    index = struct.pack("<IIQIIIIQII", 0x2468ACE0, 256, 3, 0, 100, 0, 310, index_at, 1024, 0)
+    leaf_at = index_at + len(index) + 4 + 24
+    root = struct.pack("<BBH", 0, 0, 1) + struct.pack("<IIIIQ", 0, 100, 0, 310, leaf_at)
+    leaf = struct.pack("<BBH", 1, 0, len(leaves)) + b"".join(struct.pack("<IIIIQQ", *item) for item in leaves)
+    header = struct.pack("<IHHQQQHHQQIQ", 0x888FFC26, 4, 0, tree_at, data_at, index_at, 0, 0, 0, 0, 4096, 0)
+    return header + tree + bytes(body) + index + root + leaf

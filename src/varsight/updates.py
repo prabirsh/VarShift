@@ -12,13 +12,16 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import load_settings
 
 STATUS_FILE = "update_status.json"
+STARTED_FILE = "update_check.started"
 CHECK_EVERY = timedelta(hours=24)
+RETRY_AFTER = timedelta(hours=1)
 OLD_DATA = timedelta(days=30)
 
 
@@ -79,14 +82,26 @@ def notice_lines(data_dir: Path, manifest: dict) -> list[str]:
     return lines
 
 
+def _claim_check(data_dir: Path) -> bool:
+    """Allow one try an hour, so a script calling varsight in a loop, or a computer offline, starts just one."""
+    marker = Path(data_dir) / STARTED_FILE
+    try:
+        if marker.exists() and time.time() - marker.stat().st_mtime < RETRY_AFTER.total_seconds():
+            return False
+        marker.touch()
+    except OSError:
+        return False  # a data folder that can't be written couldn't save the answer either
+    return True
+
+
 def check_in_background(data_dir: Path, manifest: dict) -> bool:
     """Start the update check if it is due, and return at once. Never raises."""
     if manifest.get("demo") or load_settings().get("updates") == "off":
         return False
     checked = _age(read_status(data_dir).get("checked_at"), datetime.now(timezone.utc))
-    if checked is not None and checked < CHECK_EVERY:
+    if checked is not None and checked < CHECK_EVERY or not _claim_check(data_dir):
         return False
-    arguments = [sys.executable, "-m", "varsight.pipeline.updatecheck", str(data_dir)]
+    arguments =[sys.executable, "-m", "varsight.pipeline.updatecheck", str(data_dir)]
     environment = dict(os.environ)
     package_root = str(Path(__file__).resolve().parents[1])
     environment["PYTHONPATH"] = package_root

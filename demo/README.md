@@ -8,17 +8,17 @@ varsight demo
 
 It builds a small data set from `sources/`, using exactly the same code as a real setup, then annotates:
 
-- [`variants.txt`](variants.txt): p., c., g. and rs inputs, written as JSON, TSV and Excel.
-- [`demo.hg19.vcf`](demo.hg19.vcf): a VCF written as TSV and Excel. It includes a two-allele line, a wrong REF and a symbolic allele on purpose, to show how each is handled.
+- [`variants.txt`](variants.txt): p., c., g. and rs inputs.
+- [`demo.hg19.vcf`](demo.hg19.vcf): a VCF. It includes a two-allele line, a wrong REF and a symbolic allele on purpose, to show how each is handled.
 
-Results go to `demo_output/`.
+Results go to `demo_output/`, in one folder for each input, each holding `report.html`, `results.xlsx` and `results.tsv`. **Open `demo_output/variants/report.html` in a browser first.**
 
 ## What is in `sources/`
 
 Real public data, cut down to 12 genes: BRAF, KRAS, NRAS, EGFR, TP53, PIK3CA, IDH1, BRCA1, BRCA2, JAK2, KIT and PTEN.
 
 | File | From | Cut down to |
-|---|---|---|
+| - | - | - |
 | `hg19.windows.fa.gz`, `hg38.windows.fa.gz` | UCSC | The sequence around each gene (6 kb either side), at its real coordinates, plus chrM |
 | `refseq.*.gff.gz` | RefSeq | Lines for these genes |
 | `clinvar.*.vcf.gz` | ClinVar 2026-10-25 | At most 1,200 records per gene, plus the variants used in the demo and tests |
