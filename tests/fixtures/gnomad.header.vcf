@@ -1,0 +1,3 @@
+##fileformat=VCFv4.2
+##INFO=<ID=AF,Number=A,Type=Float,Description="Alternate allele frequency in samples">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO

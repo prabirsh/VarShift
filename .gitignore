@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+
+# Local data and results. Patient VCFs and results must never be committed.
+varsight-data/
+demo_output/
+*.incomplete
+*.vcf.gz
+*.vcf.bgz
+*.sqlite
+*.fa
+*.fai
+!demo/**
+results*.tsv
+results*.xlsx
+results*.json
+
+# Editors and systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

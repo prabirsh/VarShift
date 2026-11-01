@@ -1,0 +1,188 @@
+{
+  "_comment": "Every external file VarSight reads. Annotation itself never uses the network; only setup and update read this list. Licence notes are a summary, not legal advice: check them against your own use.",
+  "allowed_hosts": [
+    "hgdownload.soe.ucsc.edu",
+    "ftp.ensembl.org",
+    "ftp.ncbi.nlm.nih.gov",
+    "ftp.ebi.ac.uk",
+    "ftp.uniprot.org",
+    "storage.googleapis.com",
+    "civicdb.org",
+    "search.clinicalgenome.org",
+    "ftp.clinicalgenome.org",
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com"
+  ],
+  "sources": {
+    "hg19_fasta": {
+      "name": "hg19 reference (UCSC)",
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz",
+      "md5_list": "https://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/md5sum.txt",
+      "max_mb": 1200,
+      "license": "UCSC states genome data is free for public and commercial use"
+    },
+    "hg38_fasta": {
+      "name": "hg38 reference (UCSC)",
+      "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz",
+      "md5_list": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/md5sum.txt",
+      "max_mb": 1200,
+      "license": "UCSC states genome data is free for public and commercial use"
+    },
+    "chain_hg19_hg38": {
+      "name": "GRCh37 to GRCh38 chain (Ensembl)",
+      "url": "https://ftp.ensembl.org/pub/assembly_mapping/homo_sapiens/GRCh37_to_GRCh38.chain.gz",
+      "max_mb": 20,
+      "license": "Ensembl data; confirm terms for your use at ensembl.org"
+    },
+    "chain_hg38_hg19": {
+      "name": "GRCh38 to GRCh37 chain (Ensembl)",
+      "url": "https://ftp.ensembl.org/pub/assembly_mapping/homo_sapiens/GRCh38_to_GRCh37.chain.gz",
+      "max_mb": 20,
+      "license": "Ensembl data; confirm terms for your use at ensembl.org"
+    },
+    "refseq_hg19": {
+      "name": "RefSeq GRCh37 annotation (NCBI)",
+      "url": "https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz",
+      "max_mb": 200,
+      "license": "NCBI places no restrictions on reuse; submitters may hold rights it cannot clear"
+    },
+    "refseq_hg38": {
+      "name": "RefSeq GRCh38 annotation (NCBI)",
+      "url": "https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz",
+      "max_mb": 400,
+      "license": "NCBI places no restrictions on reuse; submitters may hold rights it cannot clear"
+    },
+    "gencode_hg19": {
+      "name": "GENCODE v19 annotation",
+      "url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_19/gencode.v19.annotation.gff3.gz",
+      "max_mb": 200,
+      "license": "GENCODE describes its data as open access"
+    },
+    "gencode_hg38": {
+      "name": "GENCODE latest basic annotation",
+      "list_url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/latest_release/",
+      "pattern": "gencode\\.v\\d+\\.basic\\.annotation\\.gff3\\.gz",
+      "max_mb": 300,
+      "license": "GENCODE describes its data as open access"
+    },
+    "mane": {
+      "name": "MANE summary (NCBI and EMBL-EBI)",
+      "list_url": "https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/",
+      "pattern": "MANE\\.GRCh38\\.v[0-9.]+\\.summary\\.txt\\.gz",
+      "max_mb": 50,
+      "license": "NCBI places no restrictions on reuse"
+    },
+    "clinvar_hg19": {
+      "name": "ClinVar GRCh37 VCF",
+      "url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/clinvar.vcf.gz",
+      "md5_url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh37/clinvar.vcf.gz.md5",
+      "max_mb": 800,
+      "license": "NCBI places no restrictions on reuse; submitters may hold rights it cannot clear"
+    },
+    "clinvar_hg38": {
+      "name": "ClinVar GRCh38 VCF",
+      "url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz",
+      "md5_url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz.md5",
+      "max_mb": 800,
+      "license": "NCBI places no restrictions on reuse; submitters may hold rights it cannot clear"
+    },
+    "clinvar_summary": {
+      "name": "ClinVar variant_summary",
+      "url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz",
+      "md5_url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz.md5",
+      "max_mb": 2000,
+      "license": "NCBI places no restrictions on reuse; submitters may hold rights it cannot clear"
+    },
+    "hgnc": {
+      "name": "HGNC complete set",
+      "url": "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt",
+      "max_mb": 100,
+      "license": "CC0 per HGNC"
+    },
+    "clingen_validity": {
+      "name": "ClinGen gene-disease validity",
+      "url": "https://search.clinicalgenome.org/kb/gene-validity/download",
+      "max_mb": 50,
+      "license": "CC0 per ClinGen"
+    },
+    "clingen_dosage": {
+      "name": "ClinGen dosage sensitivity",
+      "url": "https://ftp.clinicalgenome.org/ClinGen_gene_curation_list_GRCh38.tsv",
+      "max_mb": 20,
+      "license": "CC0 per ClinGen"
+    },
+    "gnomad_constraint": {
+      "name": "gnomAD v2.1.1 gene constraint",
+      "url": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/constraint/gnomad.v2.1.1.lof_metrics.by_gene.txt.bgz",
+      "max_mb": 50,
+      "license": "gnomAD public release; confirm terms for your use at gnomad.broadinstitute.org"
+    },
+    "hpo_diseases": {
+      "name": "HPO genes to disease",
+      "url": "https://github.com/obophenotype/human-phenotype-ontology/releases/latest/download/genes_to_disease.txt",
+      "max_mb": 50,
+      "license": "HPO allows use with citation of the HPO Consortium; see hpo.jax.org"
+    },
+    "uniprot": {
+      "name": "UniProt human reference proteome",
+      "url": "https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/UP000005640/UP000005640_9606.dat.gz",
+      "max_mb": 500,
+      "license": "CC BY 4.0"
+    },
+    "pfam_regions": {
+      "name": "Pfam-A regions",
+      "url": "https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.regions.tsv.gz",
+      "stream": true,
+      "max_mb": 12000,
+      "license": "CC0 per InterPro"
+    },
+    "civic_variants": {
+      "name": "CIViC variant summaries",
+      "url": "https://civicdb.org/downloads/nightly/nightly-VariantSummaries.tsv",
+      "max_mb": 50,
+      "license": "CC0 per CIViC"
+    },
+    "civic_evidence": {
+      "name": "CIViC clinical evidence",
+      "url": "https://civicdb.org/downloads/nightly/nightly-ClinicalEvidenceSummaries.tsv",
+      "max_mb": 100,
+      "license": "CC0 per CIViC"
+    },
+    "alphamissense_hg19": {
+      "name": "AlphaMissense hg19",
+      "url": "https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg19.tsv.gz",
+      "max_mb": 1500,
+      "license": "The file header says CC BY-NC-SA 4.0 (non-commercial); a later Zenodo record says CC BY 4.0"
+    },
+    "alphamissense_hg38": {
+      "name": "AlphaMissense hg38",
+      "url": "https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz",
+      "max_mb": 1500,
+      "license": "The file header says CC BY-NC-SA 4.0 (non-commercial); a later Zenodo record says CC BY 4.0"
+    },
+    "gnomad_hg19": {
+      "name": "gnomAD v2.1.1 exomes",
+      "url_template": "https://storage.googleapis.com/gcp-public-data--gnomad/release/2.1.1/vcf/exomes/gnomad.exomes.r2.1.1.sites.{chrom}.vcf.bgz",
+      "stream": true,
+      "max_mb": 12000,
+      "license": "gnomAD public release; confirm terms for your use at gnomad.broadinstitute.org"
+    }
+  },
+  "artifacts": {
+    "genome.hg19": {"sources": ["hg19_fasta"], "build": "hg19", "policy": "once", "kind": "genome"},
+    "genome.hg38": {"sources": ["hg38_fasta"], "build": "hg38", "policy": "once", "kind": "genome"},
+    "liftover.hg19_hg38": {"sources": ["chain_hg19_hg38"], "builds": ["hg19", "hg38"], "policy": "once", "kind": "liftover"},
+    "liftover.hg38_hg19": {"sources": ["chain_hg38_hg19"], "builds": ["hg19", "hg38"], "policy": "once", "kind": "liftover"},
+    "transcripts.hg19": {"sources": ["refseq_hg19", "gencode_hg19", "mane"], "build": "hg19", "policy": "approval", "kind": "transcripts"},
+    "transcripts.hg38": {"sources": ["refseq_hg38", "gencode_hg38", "mane"], "build": "hg38", "policy": "approval", "kind": "transcripts"},
+    "clinvar.hg19": {"sources": ["clinvar_hg19", "clinvar_summary"], "build": "hg19", "policy": "auto", "kind": "clinvar"},
+    "clinvar.hg38": {"sources": ["clinvar_hg38", "clinvar_summary"], "build": "hg38", "policy": "auto", "kind": "clinvar"},
+    "genes": {"sources": ["hgnc", "clingen_validity", "clingen_dosage", "gnomad_constraint", "hpo_diseases"], "policy": "auto", "kind": "genes"},
+    "proteins": {"sources": ["uniprot", "pfam_regions"], "policy": "auto", "kind": "proteins"},
+    "civic": {"sources": ["civic_variants", "civic_evidence"], "policy": "auto", "kind": "civic"},
+    "alphamissense.hg19": {"sources": ["alphamissense_hg19"], "build": "hg19", "policy": "optional", "kind": "alphamissense"},
+    "alphamissense.hg38": {"sources": ["alphamissense_hg38"], "build": "hg38", "policy": "optional", "kind": "alphamissense"},
+    "gnomad.hg19": {"sources": ["gnomad_hg19"], "build": "hg19", "policy": "optional", "kind": "gnomad"}
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-01",
+  "genes": [
+    "BRAF",
+    "BRCA1",
+    "BRCA2",
+    "EGFR",
+    "IDH1",
+    "JAK2",
+    "KIT",
+    "KRAS",
+    "NRAS",
+    "PIK3CA",
+    "PTEN",
+    "TP53"
+  ],
+  "note": "Real public data cut down to these genes. See demo/README.md. Not for clinical use.",
+  "versions": {
+    "clinvar.hg19": "2026-10-25",
+    "clinvar.hg38": "2026-10-25",
+    "refseq.hg19": "2022-03-12",
+    "refseq.hg38": "2024-08-27",
+    "hgnc": "2026-10-30",
+    "uniprot": "2026-11-01",
+    "civic": "2026-11-01",
+    "genome.hg19": "2018-08-21",
+    "genome.hg38": "2014-01-16",
+    "chain.hg19_hg38": "2014-07-25",
+    "chain.hg38_hg19": "2014-07-25"
+  },
+  "transferred_mb": 176.9,
+  "clinvar_records_per_gene_cap": 1200
+}

@@ -1,0 +1,146 @@
+{
+  "_comment": "Link templates. A changed site format is a one-line fix here. {placeholders} are URL-quoted when filled. label confirmed_id: the ID came from local data. label built: made from the variant; the page may hold nothing and is not evidence on its own.",
+  "links": [
+    {
+      "name": "ClinVar",
+      "label": "confirmed_id",
+      "requires": ["clinvar_id"],
+      "url": "https://www.ncbi.nlm.nih.gov/clinvar/variation/{clinvar_id}/",
+      "fallback": {
+        "requires": ["gene", "protein_short"],
+        "url": "https://www.ncbi.nlm.nih.gov/clinvar/?term={gene}%5Bgene%5D+AND+{protein_short}",
+        "note": "Search only: this variant is not in the installed ClinVar."
+      }
+    },
+    {
+      "name": "NCBI Gene",
+      "label": "confirmed_id",
+      "requires": ["ncbi_gene"],
+      "url": "https://www.ncbi.nlm.nih.gov/gene/{ncbi_gene}"
+    },
+    {
+      "name": "NCBI RefSeq",
+      "label": "confirmed_id",
+      "requires": ["refseq"],
+      "url": "https://www.ncbi.nlm.nih.gov/nuccore/{refseq}"
+    },
+    {
+      "name": "dbSNP",
+      "label": "confirmed_id",
+      "requires": ["rsid"],
+      "url": "https://www.ncbi.nlm.nih.gov/snp/rs{rsid}",
+      "missing_note": "No rs number in the installed ClinVar record."
+    },
+    {
+      "name": "HGNC",
+      "label": "confirmed_id",
+      "requires": ["hgnc_id"],
+      "url": "https://www.genenames.org/data/gene-symbol-report/#!/hgnc_id/{hgnc_id}"
+    },
+    {
+      "name": "Ensembl",
+      "label": "confirmed_id",
+      "requires": ["ensembl_gene"],
+      "url_hg19": "https://grch37.ensembl.org/Homo_sapiens/Gene/Summary?g={ensembl_gene}",
+      "url_hg38": "https://www.ensembl.org/Homo_sapiens/Gene/Summary?g={ensembl_gene}"
+    },
+    {
+      "name": "UniProt",
+      "label": "confirmed_id",
+      "requires": ["uniprot"],
+      "url": "https://www.uniprot.org/uniprotkb/{uniprot}/entry"
+    },
+    {
+      "name": "Pfam",
+      "label": "confirmed_id",
+      "requires": ["pfam"],
+      "url": "https://www.ebi.ac.uk/interpro/entry/pfam/{pfam}/",
+      "missing_note": "No Pfam domain recorded for this gene's UniProt entry."
+    },
+    {
+      "name": "ProteinPaint",
+      "label": "built",
+      "requires": ["gene"],
+      "url": "https://proteinpaint.stjude.org/?genome={build}&gene={gene}",
+      "note": "Opens the gene view, not this one variant."
+    },
+    {
+      "name": "Franklin",
+      "label": "built",
+      "requires": ["contig_chr", "pos", "ref", "alt"],
+      "url_hg19": "https://franklin.genoox.com/clinical-db/variant/snp/{contig_chr}-{pos}-{ref}-{alt}",
+      "url_hg38": "https://franklin.genoox.com/clinical-db/variant/snp/{contig_chr}-{pos}-{ref}-{alt}-hg38"
+    },
+    {
+      "name": "COSMIC",
+      "label": "built",
+      "requires": ["gene"],
+      "url": "https://cancer.sanger.ac.uk/cosmic/search?q={cosmic_query}",
+      "note": "COSMIC may ask you to sign in first."
+    },
+    {
+      "name": "VarSome",
+      "label": "built",
+      "requires": ["contig_bare", "pos", "ref", "alt"],
+      "url": "https://varsome.com/variant/{build}/{contig_bare}-{pos}-{ref}-{alt}",
+      "note": "VarSome may show a security check to automated visitors."
+    },
+    {
+      "name": "OncoKB",
+      "label": "built",
+      "requires": ["gene", "protein_short"],
+      "url": "https://www.oncokb.org/gene/{gene}/somatic/{protein_short}",
+      "fallback": {
+        "requires": ["gene"],
+        "url": "https://www.oncokb.org/gene/{gene}",
+        "note": "Gene page: this variant has no protein change to look up."
+      }
+    },
+    {
+      "name": "gnomAD",
+      "label": "built",
+      "requires": ["contig_bare", "pos", "ref", "alt"],
+      "url_hg19": "https://gnomad.broadinstitute.org/variant/{contig_bare}-{pos}-{ref}-{alt}?dataset=gnomad_r2_1",
+      "url_hg38": "https://gnomad.broadinstitute.org/variant/{contig_bare}-{pos}-{ref}-{alt}?dataset=gnomad_r4"
+    },
+    {
+      "name": "UCSC Genome Browser",
+      "label": "built",
+      "requires": ["contig", "pos"],
+      "url": "https://genome.ucsc.edu/cgi-bin/hgTracks?db={build}&position={contig}:{pos}-{pos}"
+    },
+    {
+      "name": "ClinGen",
+      "label": "confirmed_id",
+      "requires": ["hgnc_id"],
+      "url": "https://search.clinicalgenome.org/kb/genes/{hgnc_id}"
+    },
+    {
+      "name": "CIViC",
+      "label": "confirmed_id",
+      "requires": ["civic_url"],
+      "url": "{civic_url}",
+      "raw": true,
+      "missing_note": "This variant is not in the installed CIViC data."
+    },
+    {
+      "name": "OMIM",
+      "label": "confirmed_id",
+      "requires": ["omim"],
+      "url": "https://omim.org/entry/{omim}",
+      "note": "OMIM may show a security check to automated visitors."
+    },
+    {
+      "name": "cBioPortal",
+      "label": "built",
+      "requires": ["gene"],
+      "url": "https://www.cbioportal.org/ln?q={gene}:MUT"
+    },
+    {
+      "name": "PubMed",
+      "label": "built",
+      "requires": ["gene"],
+      "url": "https://pubmed.ncbi.nlm.nih.gov/?term={pubmed_query}"
+    }
+  ]
+}

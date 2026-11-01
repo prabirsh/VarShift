@@ -1,0 +1,29 @@
+# VarSight demo: one description per line. Lines starting with # are skipped.
+# All of these use public example variants. Nothing here comes from a patient.
+
+# Protein level, in the forms colleagues usually send
+BRAF V600E
+BRAF p.Val600Glu
+KRAS G12D
+NRAS Q61R
+EGFR L858R
+TP53 R175H
+PIK3CA H1047R
+IDH1 R132H
+KIT D816V
+JAK2 V617F
+EGFR E746_A750del
+BRCA1 E23fs
+
+# cDNA level
+NM_004333.6:c.1799T>A
+NM_000546.6(TP53):c.524G>A
+BRCA1 c.68_69del
+BRCA2 c.5946del
+
+# Genomic level; a RefSeq chromosome accession also says which build it is on
+NC_000007.13:g.140453136A>T
+NC_000007.14:g.140753336A>T
+
+# dbSNP number, looked up through ClinVar
+rs113488022

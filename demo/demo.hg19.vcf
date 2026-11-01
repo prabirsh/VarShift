@@ -1,0 +1,31 @@
+##fileformat=VCFv4.2
+##source=VarSight demo. Public example variants only, with made-up depth and genotype values. Not from a patient.
+##reference=hg19
+##contig=<ID=chr1,length=249250621>
+##contig=<ID=chr2,length=243199373>
+##contig=<ID=chr3,length=198022430>
+##contig=<ID=chr4,length=191154276>
+##contig=<ID=chr7,length=159138663>
+##contig=<ID=chr9,length=141213431>
+##contig=<ID=chr10,length=135534747>
+##contig=<ID=chr12,length=133851895>
+##contig=<ID=chr13,length=115169878>
+##contig=<ID=chr17,length=81195210>
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Read depth (invented for this demo)">
+##INFO=<ID=NOTE,Number=1,Type=String,Description="What this line shows">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	DEMO_SAMPLE
+chr1	115256529	.	T	C,A	50	PASS	DP=120;NOTE=NRAS_Q61_two_alleles_on_one_line	GT	1/2
+chr2	209113112	.	C	T	50	PASS	DP=120;NOTE=IDH1_R132H_minus_strand	GT	0/1
+chr3	178952085	.	A	G	50	PASS	DP=120;NOTE=PIK3CA_H1047R	GT	0/1
+chr4	55599321	.	A	T	50	PASS	DP=120;NOTE=KIT_D816V	GT	0/1
+chr7	55259515	.	T	G	50	PASS	DP=120;NOTE=EGFR_L858R	GT	0/1
+chr7	140453136	.	A	T	50	PASS	DP=120;NOTE=BRAF_V600E	GT	0/1
+chr7	140453137	.	G	T	50	PASS	DP=120;NOTE=wrong_REF_on_purpose_to_show_the_check	GT	0/1
+chr9	5073770	.	G	T	50	PASS	DP=120;NOTE=JAK2_V617F	GT	0/1
+chr10	89692905	.	G	A	50	PASS	DP=120;NOTE=PTEN_R130Q	GT	0/1
+chr12	25398284	.	C	T	50	PASS	DP=120;NOTE=KRAS_G12D	GT	0/1
+chr13	32914437	.	GT	G	50	PASS	DP=120;NOTE=BRCA2_c.5946del_frameshift	GT	0/1
+chr17	7578406	.	C	T	50	PASS	DP=120;NOTE=TP53_R175H	GT	0/1
+chr17	41276044	.	ACT	A	50	PASS	DP=120;NOTE=BRCA1_c.68_69del_frameshift	GT	0/1
+chr17	41276044	.	A	<DEL>	50	PASS	DP=120;NOTE=symbolic_allele_is_reported_and_skipped	GT	0/1
