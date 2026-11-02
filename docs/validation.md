@@ -6,39 +6,47 @@ This page says what was tested, how, what came out, and what hasn't been proven.
 
 ## Whole-genome sample
 
-On 2 November 2026, `varsight validate sample=20000` ran on a complete hg19 setup. It takes evenly spaced names from all of ClinVar, 20,027 in this run, so it is a much harder test than the 12 genes below. A second run from WSL, on 1,998 names, gave similar rates. hg38 hasn't been measured this way, and no cross-build check was possible with one build installed.
+On 2 November 2026, `varsight validate sample=20000` ran on a complete hg19 setup. It takes evenly spaced names from all of ClinVar, 20,027 in this run, so it is a much harder test than the 12 genes below. hg38 hasn't been measured this way, and no cross-build check was possible with one build installed.
 
-The full report, with examples from every mismatch group, is in [validation-results/clinvar-hg19-whole-genome.md](validation-results/clinvar-hg19-whole-genome.md).
+The first run found that transcripts with a gap against hg19 were numbered wrongly. That was fixed the same day, and the same names were measured again. The full report, with examples from every remaining mismatch group, is in [validation-results/clinvar-hg19-whole-genome.md](validation-results/clinvar-hg19-whole-genome.md).
 
-| Test | What it checks | Passed | Rate |
-| - | - | -: | -: |
-| `forward_c_snv` | Genome position gives ClinVar's c. name | 18,448 of 18,539 | 99.51% |
-| `forward_c_indel` | The same, for indels | 1,386 of 1,413 | 98.09% |
-| `forward_p_snv` | Genome position gives ClinVar's p. name | 14,917 of 15,010 | 99.38% |
-| `forward_p_indel` | The same, for indels | 956 of 996 | 95.98% |
-| `reverse_c_snv` | c. name gives ClinVar's position | 18,448 of 18,539 | 99.51% |
-| `reverse_c_indel` | The same, for indels | 1,397 of 1,413 | 98.87% |
-| `reverse_p_snv` | ClinVar's position is among the candidates for its p. name | 15,022 of 15,048 | 99.83% |
-| `reverse_p_indel` | The same, for indels | 991 of 996 | 99.50% |
-| `consequence_snv` | Effect agrees with ClinVar's molecular consequence | 18,529 of 18,564 | 99.81% |
-| `consequence_indel` | The same, for indels | 1,387 of 1,398 | 99.21% |
+| Test | What it checks | Before the fix | Passed | Rate |
+| - | - | -: | -: | -: |
+| `forward_c_snv` | Genome position gives ClinVar's c. name | 99.51% | 18,527 of 18,539 | 99.94% |
+| `forward_c_indel` | The same, for indels | 98.09% | 1,396 of 1,413 | 98.80% |
+| `forward_p_snv` | Genome position gives ClinVar's p. name | 99.38% | 14,982 of 15,010 | 99.81% |
+| `forward_p_indel` | The same, for indels | 95.98% | 964 of 996 | 96.79% |
+| `reverse_c_snv` | c. name gives ClinVar's position | 99.51% | 18,527 of 18,539 | 99.94% |
+| `reverse_c_indel` | The same, for indels | 98.87% | 1,407 of 1,413 | 99.58% |
+| `reverse_p_snv` | ClinVar's position is among the candidates for its p. name | 99.83% | 15,022 of 15,048 | 99.83% |
+| `reverse_p_indel` | The same, for indels | 99.50% | 991 of 996 | 99.50% |
+| `consequence_snv` | Effect agrees with ClinVar's molecular consequence | 99.81% | 18,529 of 18,564 | 99.81% |
+| `consequence_indel` | The same, for indels | 99.21% | 1,387 of 1,398 | 99.21% |
+
+### Transcripts with a gap against the genome
+
+1,231 of the RefSeq transcripts on hg19, 306 of them MANE Select, don't align to the genome base for base: the transcript has bases the genome lacks, or the reverse. RefSeq's exon rows hide this, sometimes by skipping two genome bases where the transcript has one extra, which looks like a tiny intron.
+
+VarSight used to count along those exon rows, so everything after a gap was off by its length. In ALMS1 `NM_001378454.1`, `chr2-73675519-A-G` was named `c.1862A>G` and `p.Tyr621Cys`, where ClinVar has `c.1865A>G` and `p.Tyr622Cys`. Worse, a c. name given as input could land a few bases away: of 25 such mismatches listed, 17 were refused and 8 were placed 3 bases off.
+
+Now VarSight reads RefSeq's own alignment, its `cDNA_match` rows, and numbers through it. Bases the genome lacks are kept as unknown, so later codons stay in frame. Along whole genes, ClinVar's exonic names now agree on 6,258 of 6,259 in ALMS1, 852 of 852 in SHANK3 and 200 of 200 in SRD5A2. A change that touches the gap itself gets the warning `transcript_gap_here` instead of a name. hg38 uses the same code, but hasn't been measured.
 
 ### What the mismatches are
 
-Every mismatch in the four `forward` tests, sorted by cause:
+Every mismatch left in the four `forward` tests, sorted by cause:
 
 | Cause | c. SNV | c. indel | p. SNV | p. indel |
 | - | -: | -: | -: | -: |
-| The transcript has a gap against hg19 | 84 | 10 | 71 | 10 |
+| A transcript with a gap against hg19 | 6 | 0 | 7 | 2 |
 | The same change, spelled or placed differently | 0 | 16 | 0 | 28 |
 | No p. name, because the transcript has an in-frame stop on hg19 | 0 | 0 | 19 | 0 |
-| Other, including transcripts placed differently on hg19 | 7 | 1 | 3 | 2 |
-| **Total** | **91** | **27** | **93** | **40** |
+| Other, including transcripts placed differently on hg19 | 6 | 1 | 2 | 2 |
+| **Total** | **12** | **17** | **28** | **32** |
 
-- **Gaps are a real limit in VarSight, and the main one found so far.** About 1,100 of the 82,539 RefSeq transcripts on hg19, 275 of them MANE Select, have an indel or frameshift against the genome. VarSight numbers a transcript from its exons and doesn't yet use RefSeq's alignment of the gap, so everything after the gap is off by its length. In ALMS1 `NM_001378454.1`, `chr2-73675519-A-G` gets `c.1862A>G` and `p.Tyr621Cys`, where ClinVar has `c.1865A>G` and `p.Tyr622Cys`.
-- **The same limit affects c. names given as input.** Of the 25 mismatches listed in the report for `reverse_c_snv`, 17 were refused with `no transcript fits`, and 8 were placed 3 bases from ClinVar's position because the wrong base happened to match. Results on these transcripts carry the warning `transcript_differs_from_genome`. **Don't rely on a name or position that carries this warning without checking it against the transcript.**
-- **Same change, spelled differently:** ClinVar's `p.Glu43_Ser44insGlu` is VarSight's `p.Glu43dup`, its `p.Ser290delinsArgTer` is VarSight's `p.Ser290ArgfsTer2`, and its `c.1366-23dup` is VarSight's `c.1366-15dup`, moved to the 3' end of the repeat. Counting these as agreement gives 99.22% for c. indels and 98.80% for p. indels.
+- **Gaps, what's left:** two are ClinVar's own SHANK3 intronic names, which disagree with its exonic names on the same exon (`c.2301-2` next to `c.2336`). Three place the gap one base differently inside a repeat, which the alignment leaves open. The rest are transcripts where hg19 lacks a large part of the coding region, so they get a warning instead of a protein name.
+- **Same change, spelled differently:** ClinVar's `p.Glu43_Ser44insGlu` is VarSight's `p.Glu43dup`, its `p.Ser290delinsArgTer` is VarSight's `p.Ser290ArgfsTer2`, and its `c.1366-23dup` is VarSight's `c.1366-15dup`, moved to the 3' end of the repeat. Counting these as agreement gives 99.93% for c. indels and 99.60% for p. indels.
 - **No p. name:** VarSight refuses to translate a transcript with an in-frame stop on hg19 and flags it `cds_internal_stop`. This covers selenoproteins such as SELENON, and genes such as ACTN3.
+- **Results on these transcripts still carry `transcript_differs_from_genome`,** because the genome's bases can differ from the transcript's. Check any change close to the difference.
 
 Names on a different transcript version are scored separately in the report, 53 names here, for the reason given under [lower scores on other versions](#lower-scores-on-other-versions).
 
@@ -155,7 +163,7 @@ See [benchmarks](benchmarks.md).
 
 | What | Status | How to close it |
 | - | - | - |
-| Transcripts with a gap against hg19 | c. and p. numbers after the gap are off by its length, and a c. name as input can be refused or misplaced. They carry a warning | Read RefSeq's alignment of the gap |
+| Transcripts with a gap against the genome | Fixed on hg19 and measured. hg38 uses the same code but hasn't been measured | `varsight validate` after an hg38 setup |
 | Whole-genome accuracy on hg38 | hg19 is measured on a 20,027-name sample, but hg38 only on 12 genes | `varsight validate sample=20000 report=validation.md` after an hg38 setup |
 | Full setup | hg19 ran from start to the self-test on 2 November 2026, natively on Windows, and all 5 known variants passed. hg38, both builds together, and a full build inside WSL haven't been run | Run `varsight setup` |
 | Real setup time and size | [Measured for hg19](benchmarks.md#setup-time). Estimates for hg38 | The report in `reports/` records them |

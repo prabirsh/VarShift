@@ -71,6 +71,14 @@ def decode_exons(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(pairs)
 
 
+def encode_blocks(blocks) -> str:
+    return ",".join(f"{start}-{end}-{index}" for start, end, index in blocks)
+
+
+def decode_blocks(text: str) -> tuple[tuple[int, int, int], ...]:
+    return tuple(tuple(int(number) for number in item.split("-")) for item in text.split(",")) if text else ()
+
+
 class DataStore:
     def __init__(self, data_dir: Path, overrides: dict[str, Path] | None = None):
         """overrides maps a database name to a file used in its place, for testing a new build."""
@@ -173,6 +181,8 @@ class DataStore:
             refseq_select=bool(row["refseq_select"]),
             genome_note=row["genome_note"] or "",
             translation_exception=bool(row["translation_exception"]),
+            # A database built before this column existed still reads, with the old numbering.
+            blocks=decode_blocks(row["alignment"]) if "alignment" in row.keys() else (),
         )
         if len(self._transcript_cache) > 4096:
             self._transcript_cache.clear()

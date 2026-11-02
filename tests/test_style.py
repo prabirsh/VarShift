@@ -14,8 +14,13 @@ ALLOWED = "gcp-public-data" + DOUBLE_HYPHEN + "gnomad"
 
 def package_files():
     for path in ROOT.rglob("*"):
-        if path.is_file() and path.suffix.lower() in TEXT_SUFFIXES and not SKIP_FOLDERS & set(path.relative_to(ROOT).parts):
-            yield path
+        parts = path.relative_to(ROOT).parts
+        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES or SKIP_FOLDERS & set(parts):
+            continue
+        # A VCF or a results folder in the working copy is usually someone's sample, not part of the package.
+        if any(part.endswith("_varsight") for part in parts) or (path.suffix.lower() == ".vcf" and parts != ("demo", "demo.hg19.vcf")):
+            continue
+        yield path
 
 
 class Text(unittest.TestCase):
@@ -40,6 +45,7 @@ class Text(unittest.TestCase):
         for expected in ("README.md", "cli.py", "install.sh", "install.ps1", "install.bat", "ci.yml", "report_template.html"):
             self.assertIn(expected, names)
         self.assertNotIn("gnomad.header.vcf", names)
+        self.assertIn("demo.hg19.vcf", names)
 
 
 if __name__ == "__main__":

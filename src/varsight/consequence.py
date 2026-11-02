@@ -348,7 +348,8 @@ def _protein_effect(seq, ref_protein, tx, start, end, inserted, result) -> None:
     if span is None:
         if result.exon is not None:
             result.terms.append("coding_sequence_variant")
-            result.flags.append("spans_exon_intron_boundary")
+            one_exon = tx.locate(start) == tx.locate(max(start, end - 1))
+            result.flags.append("transcript_gap_here" if tx.blocks and one_exon else "spans_exon_intron_boundary")
         return
     a, b = span
     change = inserted if tx.strand > 0 else reverse_complement(inserted)
@@ -363,6 +364,13 @@ def _protein_effect(seq, ref_protein, tx, start, end, inserted, result) -> None:
         return
 
     a_cds, b_cds = a - cds_first, b - cds_first
+    first_codon = max(a_cds, 0) // 3 * 3
+    last_codon = (max(b_cds, a_cds + 1) - 1) // 3 * 3
+    if tx.blocks and "N" in seq[cds_first + first_codon : cds_first + last_codon + 3]:
+        result.flags.append("transcript_gap_here")
+        result.terms.append("coding_sequence_variant")
+        return
+
     alt_coding = seq[cds_first:a] + change + seq[b:]
     result.aa_position = max(a_cds, 0) // 3 + 1
 

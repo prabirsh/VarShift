@@ -110,9 +110,10 @@ def write_gz(path: Path, lines) -> int:
 
 # RefSeq
 def filter_refseq(build: str, genes: set[str], out: Path) -> dict[str, tuple[str, int, int]]:
-    """Keep every line of the chosen genes, and return their spans."""
+    """Keep every line of the chosen genes and their alignment rows, and return their spans."""
     spans: dict[str, tuple[str, int, int]] = {}
     kept = []
+    accessions = set()
     total = 0
     for line in stream_gz_lines(REFSEQ[build]):
         if line[0] == "#":
@@ -120,13 +121,22 @@ def filter_refseq(build: str, genes: set[str], out: Path) -> dict[str, tuple[str
                 kept.append(line)
             continue
         total += 1
+        fields = line.split("\t")
+        if len(fields) > 2 and fields[2] == "cDNA_match":
+            # These rows name a transcript rather than a gene, and come after the genes on each chromosome.
+            target = re.search(r"(?:^|;)Target=(\S+)", line)
+            if target and target.group(1) in accessions:
+                kept.append(line)
+            continue
         match = re.search(r"(?:^|;)gene=([^;\n]+)", line)
         if not match or match.group(1) not in genes:
             continue
-        fields = line.split("\t")
         if not fields[0].startswith("NC_"):
             continue
         kept.append(line)
+        transcript = re.search(r"(?:^|;)transcript_id=([^;\n]+)", line)
+        if transcript:
+            accessions.add(transcript.group(1))
         if fields[2] == "gene":
             spans[match.group(1)] = (fields[0], int(fields[3]), int(fields[4]))
     write_gz(out, kept)

@@ -6,7 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- The first whole-genome accuracy measure, on 20,027 ClinVar names across hg19, and the first complete setup from start to self-test. See [docs/validation.md](docs/validation.md), including the known limit on transcripts with a gap against hg19.
+- The first whole-genome accuracy measure, on 20,027 ClinVar names across hg19, and the first complete setup from start to self-test. See [docs/validation.md](docs/validation.md).
+- The warning `transcript_gap_here`, for a change that touches bases the transcript and the genome don't share.
 
 ### Changed
 
@@ -16,6 +17,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- `.gitignore` re-included everything under `demo/`, so a sample VCF dropped there to try VarSight, with its results, could have been committed. Only the demo's own files are kept now.
+- `varsight add revel` failed with `403 Forbidden`, because REVEL's own server refuses scripted downloads. REVEL now comes from its Zenodo record, which its download page names as the other source, and is checked against Zenodo's MD5.
+- c. and p. names on RefSeq transcripts that don't align exactly to the genome, 1,231 on hg19 and 306 of them MANE Select. Counting along RefSeq's exon rows put everything after a gap off by its length, and a c. name as input could land a few bases away. VarSight now numbers through RefSeq's own alignment. On 20,027 ClinVar names, c. SNVs went from 99.51% to 99.94% and p. SNVs from 99.38% to 99.81%. The transcript databases need rebuilding to get this.
 - Setup, the demo and the benchmark no longer write to the system disk. SQLite's sort files, which can reach gigabytes while an index is built, and all temporary folders now stay beside the data or the output.
 - UCSC now redirects its downloads to its Amazon bucket, `genome-browser.s3.amazonaws.com`, so setup stopped at the first step. That one bucket is now on the allow-list. Redirects still go through the same check, and the reference is still compared with UCSC's published MD5.
 - Setup from WSL now refuses a data folder on a Windows drive unless you add `windowsdrive`. It was slow, and with memory tight it stopped with `Cannot allocate memory`. That error now says what to do.

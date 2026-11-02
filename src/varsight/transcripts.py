@@ -51,6 +51,8 @@ class Transcript:
     refseq_select: bool = False
     genome_note: str = ""
     translation_exception: bool = False
+    # RefSeq's alignment, only where the transcript doesn't match the genome base for base.
+    blocks: tuple[tuple[int, int, int], ...] = ()
 
     @property
     def coding(self) -> bool:
@@ -69,16 +71,20 @@ class Transcript:
         return max(end for _, end in self.exons)
 
     @cached_property
-    def exon_offsets(self) -> tuple[int, ...]:
-        offsets, total = [], 0
+    def aligned(self) -> tuple[tuple[int, int, int], ...]:
+        """Stretches of genome matching the transcript base for base: (start, end, index of the 5' base)."""
+        if self.blocks:
+            return self.blocks
+        stretches, total = [], 0
         for start, end in self.exons:
-            offsets.append(total)
+            stretches.append((start, end, total))
             total += end - start
-        return tuple(offsets)
+        return tuple(stretches)
 
     @cached_property
     def tx_length(self) -> int:
-        return sum(end - start for start, end in self.exons)
+        start, end, index = self.aligned[-1]
+        return index + end - start
 
     @cached_property
     def introns(self) -> tuple[tuple[int, int], ...]:
@@ -103,24 +109,31 @@ class Transcript:
         return (low, high + 1) if self.strand > 0 else (high, low + 1)
 
     def exon_index_of(self, genomic: int) -> int | None:
-        """Transcript index of a genomic base, or None when it is not in an exon."""
-        for (start, end), offset in zip(self.exons, self.exon_offsets):
+        """Transcript index of a genomic base, or None when the transcript has no such base."""
+        for start, end, index in self.aligned:
             if start <= genomic < end:
-                return offset + (genomic - start if self.strand > 0 else end - 1 - genomic)
+                return index + (genomic - start if self.strand > 0 else end - 1 - genomic)
         return None
 
     def genomic_of_index(self, index: int) -> int:
         """Genomic base for a transcript index. Indices past either end extend straight out."""
         if index < 0:
             five_prime = self.exons[0][0] if self.strand > 0 else self.exons[0][1] - 1
-            return five_prime + index * self.strand
-        for (start, end), offset in zip(self.exons, self.exon_offsets):
-            length = end - start
-            if index < offset + length:
-                within = index - offset
+            return five_prime + (index - self.aligned[0][2]) * self.strand
+        for start, end, first in self.aligned:
+            if first <= index < first + end - start:
+                within = index - first
                 return start + within if self.strand > 0 else end - 1 - within
+        if index < self.tx_length:
+            raise ResolveError(f"base {index + 1} of {self.accession} isn't in this genome build; RefSeq's alignment has a gap there")
         three_prime = self.exons[-1][1] - 1 if self.strand > 0 else self.exons[-1][0]
         return three_prime + (index - self.tx_length + 1) * self.strand
+
+    def _exon_indices(self, number: int) -> tuple[int | None, int | None]:
+        """Transcript indices of an exon's 5' and 3' bases."""
+        start, end = self.exons[number]
+        five, three = (start, end - 1) if self.strand > 0 else (end - 1, start)
+        return self.exon_index_of(five), self.exon_index_of(three)
 
     def locate(self, genomic: int) -> Location:
         for number, (start, end) in enumerate(self.exons):
@@ -150,7 +163,8 @@ class Transcript:
         """c. or n. position of a genomic base, using the HGVS rule for intronic numbering."""
         where = self.locate(genomic)
         if where.kind == "exon":
-            return self._label_index(self.exon_index_of(genomic))
+            index = self.exon_index_of(genomic)
+            return None if index is None else self._label_index(index)
         if where.kind == "intron":
             intron_start, intron_end = self.introns[where.index]
             if self.strand > 0:
@@ -159,15 +173,14 @@ class Transcript:
             else:
                 from_donor = intron_end - genomic
                 from_acceptor = genomic - intron_start + 1
-            last_of_exon = self.exon_offsets[where.index] + self.exons[where.index][1] - self.exons[where.index][0] - 1
             if from_donor <= from_acceptor:
-                label = self._label_index(last_of_exon)
+                label = self._label_index(self._exon_indices(where.index)[1])
                 return TxPosition(label.region, label.base, from_donor)
-            label = self._label_index(last_of_exon + 1)
+            label = self._label_index(self._exon_indices(where.index + 1)[0])
             return TxPosition(label.region, label.base, -from_acceptor)
         distance = (self.tx_low - genomic) if genomic < self.tx_low else (genomic - self.tx_high + 1)
         if where.kind == "upstream":
-            return self._label_index(-distance)
+            return self._label_index(self.aligned[0][2] - distance)
         return self._label_index(self.tx_length - 1 + distance)
 
     def genomic_of(self, position: TxPosition) -> int:
@@ -200,11 +213,10 @@ class Transcript:
             for number, (start, end) in enumerate(self.exons)
             if start <= genomic < end
         )
-        length = self.exons[exon_number][1] - self.exons[exon_number][0]
-        within = index - self.exon_offsets[exon_number]
-        if position.offset > 0 and within != length - 1:
+        first_of_exon, last_of_exon = self._exon_indices(exon_number)
+        if position.offset > 0 and index != last_of_exon:
             raise ResolveError(f"{position}: an offset of +N is only valid on the last base of an exon")
-        if position.offset < 0 and within != 0:
+        if position.offset < 0 and index != first_of_exon:
             raise ResolveError(f"{position}: an offset of -N is only valid on the first base of an exon")
         target = genomic + position.offset * self.strand
         if self.locate(target).kind != "intron":
@@ -212,12 +224,15 @@ class Transcript:
         return target
 
     def spliced(self, genome: Genome) -> str:
-        parts = []
-        for start, end in self.exons:
+        """The transcript's sequence. Bases the genome doesn't have are N, which keeps later codons in frame."""
+        parts, made = [], 0
+        for start, end, index in self.aligned:
             part = genome.fetch(self.contig, start, end)
             if len(part) != end - start:
                 raise ResolveError(f"{self.accession}: exon {start}-{end} is not in the installed reference")
+            parts.append("N" * (index - made))
             parts.append(reverse_complement(part) if self.strand < 0 else part)
+            made = index + end - start
         return "".join(parts)
 
     def default_rank(self) -> tuple:

@@ -203,7 +203,8 @@ class DataManager:
             if (meta.get("etag"), meta.get("last_modified")) == (remote.etag, remote.last_modified):
                 log.info("  already downloaded: %s", source["name"])
                 return dest, meta
-        expected = None
+        # A fixed archive such as Zenodo lists its checksum once, so it is kept in the catalog.
+        expected = source.get("md5")
         if "md5_url" in source:
             fields = self.fetcher.read_text(source["md5_url"]).split()
             expected = fields[0].lower() if fields else None

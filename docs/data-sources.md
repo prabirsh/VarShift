@@ -71,12 +71,14 @@ varsight remove dbsnp           # remove it and free the disk space
 
 | Database | Adds | Transfer | Kept (estimate) | Licence note |
 | - | - | - | - | - |
-| `revel` | Missense pathogenicity score, 0 to 1 | About 650 MB | About 3 GB per build | Check the REVEL site before any commercial use |
+| `revel` | Missense pathogenicity score, 0 to 1 | About 640 MB, from Zenodo | About 3 GB per build | Free for non-commercial use, per the REVEL site; ask its authors about other uses. The Zenodo record lists ODbL |
 | `alphamissense` | Missense prediction from Google DeepMind | About 600 MB per build | About 3 GB per build | The file header states CC BY-NC-SA 4.0, while a later Zenodo record says CC BY 4.0 |
 
 ```bash
 varsight add revel accept
 ```
+
+REVEL comes from [its Zenodo record](https://doi.org/10.5281/zenodo.7072866), which the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads) names as the other place to get it. Its own server refuses scripted downloads, so VarSight doesn't use that one. Zenodo publishes the file's MD5, and every download is checked against it.
 
 ### These need your own account
 

@@ -23,7 +23,11 @@ results*.xlsx
 results*.json
 results*.jsonl
 report.html
-!demo/**
+# Only the demo's own files, so a sample dropped into demo/ to try it out stays out of git.
+!demo/README.md
+!demo/demo.hg19.vcf
+!demo/variants.txt
+!demo/sources/**
 !tests/fixtures/**
 
 # Editors and systems

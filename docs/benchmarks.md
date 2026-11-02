@@ -45,8 +45,8 @@ These come from other people's papers, on other data and hardware. **They are no
 | ANNOVAR | 75.3% | 98.1% | 164,549 two-star ClinVar variants, [Human Genomics 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/) |
 | SnpEff | 98.8% | 98.6% | Same |
 | VEP | 97.7% | 99.1% | Same |
-| VarSight, SNVs | 99.51% | 99.38% | 20,027 names across hg19, [validation](validation.md) |
-| VarSight, indels | 98.09% | 95.98% | Same |
+| VarSight, SNVs | 99.94% | 99.81% | 20,027 names across hg19, [validation](validation.md) |
+| VarSight, indels | 98.80% | 96.79% | Same |
 
 VarSight's sample is much smaller than the study's, covers hg19 only and has no review-star filter, so these figures aren't directly comparable. Run `varsight validate` to measure your own.
 

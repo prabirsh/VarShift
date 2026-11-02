@@ -24,7 +24,7 @@ from ..builds import HG19, canonical_contig, is_mitochondrial, primary_contigs
 from ..errors import InputError, ReferenceMismatch, SetupError
 from ..genome import Genome, write_fai
 from ..hgvs import protein_style
-from ..store import encode_exons, ucsc_bin
+from ..store import encode_blocks, encode_exons, ucsc_bin
 from ..variant import normalize
 
 log = logging.getLogger("varsight.build")
@@ -188,7 +188,7 @@ def _chain_contig(name: str, build: str) -> str:
 _TRANSCRIPT_COLUMNS = (
     "accession, base, version, gene, gene_id, hgnc_id, contig, strand, tx_low, tx_high, bin, exons, "
     "cds_start, cds_end, biotype, protein, protein_base, source, mane, mane_accession, refseq_select, "
-    "genome_note, translation_exception"
+    "genome_note, translation_exception, alignment"
 )
 
 
@@ -216,6 +216,69 @@ def read_mane(path: Path) -> tuple[dict[str, tuple[str, str]], int]:
                 if accession:
                     mapping[accession.split(".")[0]] = (fields[status], accession)
     return mapping, len(mapping)
+
+
+def read_refseq_alignments(lines: Iterable[str]) -> dict[tuple[str, str], list[tuple[list, list]]]:
+    """RefSeq's alignment of each transcript that doesn't match the genome base for base.
+
+    These cDNA_match rows come after the genes on each chromosome, so they get a pass of their own. One row
+    is one exon. The exon rows can't stand in for them: where a transcript has an extra base, they skip two
+    genome bases instead to keep the reading frame, which looks like an intron and numbers the rest wrongly.
+    """
+    rows: dict[tuple[str, str, str], list] = {}
+    for line in lines:
+        if "\tcDNA_match\t" not in line:
+            continue
+        fields = line.rstrip("\n").split("\t")
+        if len(fields) != 9 or not fields[0].startswith("NC_"):
+            continue
+        attrs = _attributes(fields[8])
+        target = attrs.get("Target", "").split()
+        if len(target) != 4 or target[3] != "+":
+            raise SetupError(f"RefSeq alignment: unexpected Target {attrs.get('Target')!r}. The source format has changed, so nothing was installed.")
+        key = (fields[0], target[0], attrs.get("ID", ""))
+        rows.setdefault(key, []).append((int(target[1]) - 1, int(target[2]), int(fields[3]) - 1, int(fields[4]), fields[6], attrs.get("Gap", "")))
+    alignments: dict[tuple[str, str], list[tuple[list, list]]] = {}
+    for (seqid, accession, _), group in rows.items():
+        group.sort()
+        exact = group[0][0] == 0 and all(a[1] == b[0] for a, b in zip(group, group[1:])) and not any(row[5] for row in group)
+        if not exact:
+            exons = [(row[2], row[3]) for row in group]
+            blocks = [stretch for row in group for stretch in _aligned_stretches(*row)]
+            alignments.setdefault((seqid, accession), []).append((exons, blocks))
+    return alignments
+
+
+def _aligned_stretches(index: int, last_index: int, start: int, end: int, strand: str, gap: str) -> list[tuple[int, int, int]]:
+    """Split one alignment row at its gaps. The Gap operators follow the transcript, on either strand."""
+    stretches = []
+    position = start if strand == "+" else end
+    step = 1 if strand == "+" else -1
+    for operator in gap.split() or [f"M{end - start}"]:
+        kind, size = operator[0], int(operator[1:])
+        if kind == "M":
+            stretches.append((position, position + size, index) if strand == "+" else (position - size, position, index))
+        elif kind not in "ID":
+            raise SetupError(f"RefSeq alignment: unknown Gap operator {operator!r}. The source format has changed, so nothing was installed.")
+        if kind in "MI":
+            index += size
+        if kind in "MD":
+            position += step * size
+    if index != last_index or position != (end if strand == "+" else start):
+        raise SetupError(f"RefSeq alignment: Gap {gap!r} doesn't add up. The source format has changed, so nothing was installed.")
+    return stretches
+
+
+def _alignment_for(record: dict, alignments: dict | None) -> tuple[list, list] | None:
+    """The alignment on this part of the chromosome. A few transcripts align to two places on one."""
+    low = min(start for start, _ in record["exons"])
+    high = max(end for _, end in record["exons"])
+    best, best_overlap = None, 0
+    for exons, blocks in (alignments or {}).get((record["seqid"], record["accession"]), []):
+        overlap = min(high, max(end for _, end in exons)) - max(low, min(start for start, _ in exons))
+        if overlap > best_overlap:
+            best, best_overlap = (exons, blocks), overlap
+    return best
 
 
 def iter_refseq_transcripts(lines: Iterable[str], build: str) -> Iterator[dict]:
@@ -358,9 +421,11 @@ def _flush_gencode(records: dict[str, dict], build: str) -> Iterator[dict]:
         yield record
 
 
-def _transcript_row(record: dict, mane: dict) -> tuple:
+def _transcript_row(record: dict, mane: dict, alignments: dict | None = None) -> tuple:
     strand = record["strand"]
-    exons = sorted(record["exons"], reverse=strand < 0)
+    alignment = _alignment_for(record, alignments)
+    exons = sorted(alignment[0] if alignment else record["exons"], reverse=strand < 0)
+    blocks = alignment[1] if alignment else []
     accession = record["accession"]
     base, _, version = accession.partition(".")
     low = min(s for s, _ in exons)
@@ -403,6 +468,7 @@ def _transcript_row(record: dict, mane: dict) -> tuple:
         int("RefSeq Select" in tags or "MANE Select" in tags),
         record["note"],
         int(record["exception"]),
+        encode_blocks(blocks),
     )
 
 
@@ -416,11 +482,13 @@ def build_transcripts(sources: dict[str, Path], out: Path, build: str) -> dict:
         CREATE TABLE transcripts(accession TEXT, base TEXT, version INT, gene TEXT, gene_id TEXT, hgnc_id TEXT,
             contig TEXT, strand INT, tx_low INT, tx_high INT, bin INT, exons TEXT, cds_start INT, cds_end INT,
             biotype TEXT, protein TEXT, protein_base TEXT, source TEXT, mane TEXT, mane_accession TEXT,
-            refseq_select INT, genome_note TEXT, translation_exception INT);
+            refseq_select INT, genome_note TEXT, translation_exception INT, alignment TEXT);
         """,
     )
-    insert = f"INSERT INTO transcripts({_TRANSCRIPT_COLUMNS}) VALUES({','.join('?' * 23)})"
+    insert = f"INSERT INTO transcripts({_TRANSCRIPT_COLUMNS}) VALUES({','.join('?' * 24)})"
     stats = Counter()
+    with open_text(sources["refseq"]) as handle:
+        alignments = read_refseq_alignments(handle)
     readers = [("refseq", iter_refseq_transcripts)]
     if "gencode" in sources:
         readers.append(("gencode", iter_gencode_transcripts))
@@ -428,8 +496,11 @@ def build_transcripts(sources: dict[str, Path], out: Path, build: str) -> dict:
         batch = []
         with open_text(sources[name]) as handle:
             for record in reader(handle, build):
-                batch.append(_transcript_row(record, mane))
+                row = _transcript_row(record, mane, alignments)
+                batch.append(row)
                 stats[name] += 1
+                if row[-1]:
+                    stats[f"{name}_with_alignment"] += 1
                 if record["note"]:
                     stats[f"{name}_differs_from_genome"] += 1
                 if record["cds"]:

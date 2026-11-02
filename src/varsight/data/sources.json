@@ -16,7 +16,7 @@
     "release-assets.githubusercontent.com",
     "ftp.ncbi.nih.gov",
     "ftp.1000genomes.ebi.ac.uk",
-    "rothsj06.dmz.hpc.mssm.edu",
+    "zenodo.org",
     "www.cancerhotspots.org",
     "www.deciphergenomics.org",
     "www.ebi.ac.uk",
@@ -213,10 +213,11 @@
       "license": "Public release; check gnomad.broadinstitute.org for terms"
     },
     "revel": {
-      "name": "REVEL v1.3",
-      "url": "https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip",
+      "name": "REVEL v1.3 (Zenodo)",
+      "url": "https://zenodo.org/api/records/7072866/files/revel-v1.3_all_chromosomes.zip/content",
+      "md5": "3ea2bc33e6b5455fc7e9899da863b5fe",
       "max_mb": 1500,
-      "license": "Check the REVEL site for terms before any commercial use"
+      "license": "Free for non-commercial use, per the REVEL site; ask its authors about other uses"
     },
     "alphamissense_hg19": {
       "name": "AlphaMissense hg19",

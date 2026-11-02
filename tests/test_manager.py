@@ -67,6 +67,12 @@ class CoreSources(unittest.TestCase):
             self.assertFalse(catalog["sources"][source].get("stream"), source)
         self.assertLessEqual(catalog["sources"]["pfam_regions"]["max_mb"], 20)
 
+    def test_revel_comes_from_zenodo_with_its_checksum(self):
+        """REVEL's own server refuses scripts, and its download page names Zenodo as the other source."""
+        revel = load_catalog()["sources"]["revel"]
+        self.assertTrue(revel["url"].startswith("https://zenodo.org/api/records/7072866/"))
+        self.assertRegex(revel["md5"], r"^[0-9a-f]{32}$")
+
 
 class Reporting(unittest.TestCase):
     def test_a_long_build_keeps_saying_it_is_going(self):
@@ -134,7 +140,7 @@ class WithServer(unittest.TestCase):
         catalog = load_catalog()
         catalog["allowed_hosts"] = ["127.0.0.1"]
         for source_id, source in catalog["sources"].items():
-            for key in ("list_url", "pattern", "md5_url", "md5_list", "url_template"):
+            for key in ("list_url", "pattern", "md5_url", "md5_list", "md5", "url_template"):
                 source.pop(key, None)
             name = {**MAPPING, **ADVANCED}.get(source_id, "gencode.gff3" if source_id.startswith("gencode") else "absent")
             source["url"] = f"{cls.base}/{name}"
@@ -369,6 +375,14 @@ class AdvancedDatabases(WithServer):
         with self.assertRaises(SetupError) as caught:
             self.manager.add("revel")
         self.assertIn("accept", str(caught.exception))
+
+    def test_a_checksum_kept_in_the_catalog_is_checked(self):
+        manager = self._make_manager()
+        manager.catalog["sources"]["hotspots"]["md5"] = "0" * 32
+        with self.assertRaises(SetupError) as caught:
+            manager.add("hotspots")
+        self.assertIn("MD5", str(caught.exception))
+        self.assertFalse(any((self.data / "downloads").glob("hotspots__*")))
 
     def test_a_licensed_database_needs_the_users_own_file(self):
         with self.assertRaises(SetupError) as caught:

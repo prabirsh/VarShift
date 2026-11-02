@@ -163,13 +163,13 @@ A sample of 20,027 ClinVar names from across the genome, on a complete hg19 setu
 
 | Test on hg19 | Passed | Rate |
 | - | -: | -: |
-| Genome position to c. name, SNVs | 18,448 of 18,539 | 99.51% |
-| Genome position to c. name, indels | 1,386 of 1,413 | 98.09% |
-| Genome position to p. name, SNVs | 14,917 of 15,010 | 99.38% |
-| Genome position to p. name, indels | 956 of 996 | 95.98% |
+| Genome position to c. name, SNVs | 18,527 of 18,539 | 99.94% |
+| Genome position to c. name, indels | 1,396 of 1,413 | 98.80% |
+| Genome position to p. name, SNVs | 14,982 of 15,010 | 99.81% |
+| Genome position to p. name, indels | 964 of 996 | 96.79% |
 | hg19 to hg38 mapping, on 12 genes only | 13,723 of 13,723 | 100% |
 
-**Known limit: transcripts with a gap against hg19.** About 1,100 RefSeq transcripts, 275 of them MANE Select, don't align exactly to hg19, and they cause most of the mismatches above. After the gap, VarSight's c. and p. numbers are off by its length, and a c. name given as input can be refused or placed a few bases away. These results carry the warning `transcript_differs_from_genome`, so check any result that shows it.
+Most of the remaining indel differences are the same change written another way, such as `p.Glu43dup` for ClinVar's `p.Glu43_Ser44insGlu`. Transcripts that don't align exactly to the genome, 1,231 on hg19, are numbered through RefSeq's own alignment, so their names match RefSeq's.
 
 **Not yet proven:**
 
