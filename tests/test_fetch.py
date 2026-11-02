@@ -3,13 +3,18 @@
 import gzip
 import hashlib
 import http.server
+import socket
+import ssl
 import tempfile
 import threading
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest import mock
 
 from varsight.errors import SetupError
-from varsight.pipeline.fetch import Fetcher, md5_from_list
+from varsight.pipeline import fetch
+from varsight.pipeline.fetch import Fetcher, duration_label, md5_from_list
 
 BODY = b"".join(b"line %06d of the source file\n" % i for i in range(60000))
 GZIPPED = gzip.compress(BODY, mtime=0)
@@ -141,6 +146,30 @@ class Downloads(unittest.TestCase):
         self.fetcher.download(f"{self.base}/data.gz", self.root / "h", 10**8)
         self.assertEqual(gzip.decompress((self.root / "h").read_bytes()), BODY)
 
+    def test_a_matching_md5_saves_unpacking_the_file_a_second_time(self):
+        digest = hashlib.md5(GZIPPED, usedforsecurity=False).hexdigest()
+        with mock.patch.object(fetch, "_test_gzip") as test_gzip:
+            self.fetcher.download(f"{self.base}/data.gz", self.root / "h1", 10**8, digest)
+            test_gzip.assert_not_called()
+            self.fetcher.download(f"{self.base}/data.gz", self.root / "h2", 10**8)
+            test_gzip.assert_called_once()
+
+    def test_a_long_download_says_how_far_it_has_got(self):
+        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varsight.fetch", "INFO") as logs:
+            self.fetcher.download(f"{self.base}/plain.txt", self.root / "k", 10**8)
+        self.assertRegex(logs.output[0], r"plain\.txt: \d+% of 2 MB, \d.*/s, about .* left")
+
+    def test_a_long_stream_says_how_far_it_has_got(self):
+        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varsight.fetch", "INFO") as logs:
+            with self.fetcher.stream(f"{self.base}/plain.txt", 10**8) as stream:
+                while stream.read(65536):
+                    pass
+        self.assertRegex(logs.output[-1], r"plain\.txt: 100% of 2 MB")
+
+    def test_a_short_transfer_stays_quiet(self):
+        with self.assertNoLogs("varsight.fetch", "INFO"):
+            self.fetcher.download(f"{self.base}/plain.txt", self.root / "l", 10**8)
+
     def test_a_file_over_its_size_limit_is_refused(self):
         with self.assertRaises(SetupError):
             self.fetcher.download(f"{self.base}/plain.txt", self.root / "i", 1000)
@@ -193,6 +222,55 @@ class Downloads(unittest.TestCase):
 
         with self.assertRaises(SetupError):
             Lister(["127.0.0.1"], allow_http_hosts=("127.0.0.1",)).resolve_listing(f"{self.base}/", "x")
+
+
+class Durations(unittest.TestCase):
+    def test_labels(self):
+        self.assertEqual(duration_label(45), "45 s")
+        self.assertEqual(duration_label(720), "12 min")
+        self.assertEqual(duration_label(7500), "2 h 5 min")
+
+
+class WindowsRoots(unittest.TestCase):
+    """Windows fetches a trusted root only when its own client needs it, so Python's first visit can be refused."""
+
+    REFUSED = urllib.error.URLError(ssl.SSLCertVerificationError(1, "unable to get local issuer certificate"))
+    URL = "https://ftp.example.org/data/file.gz"
+
+    def run_request(self, answers, curl=Path("curl.exe")):
+        opener = mock.Mock()
+        opener.open.side_effect = answers
+        with (
+            mock.patch.object(Fetcher, "_make_opener", return_value=opener),
+            mock.patch.object(fetch, "_windows_curl", return_value=curl),
+            mock.patch.object(fetch.subprocess, "run") as self.run_curl,
+        ):
+            fetcher = Fetcher(["ftp.example.org"])
+            try:
+                return fetcher._request(self.URL)
+            finally:
+                self.opens = opener.open.call_count
+
+    def test_a_refusal_asks_windows_then_python_checks_again(self):
+        self.assertEqual(self.run_request([self.REFUSED, "answer"]), "answer")
+        self.assertEqual(self.opens, 2)
+        arguments = self.run_curl.call_args.args[0]
+        self.assertEqual(arguments, ["curl.exe", "-sI", "-m", "30", "https://ftp.example.org/"])
+
+    def test_a_second_refusal_stands(self):
+        with self.assertRaises(urllib.error.URLError):
+            self.run_request([self.REFUSED, self.REFUSED])
+        self.run_curl.assert_called_once()
+
+    def test_other_systems_never_start_a_process(self):
+        with self.assertRaises(urllib.error.URLError):
+            self.run_request([self.REFUSED], curl=None)
+        self.run_curl.assert_not_called()
+
+    def test_other_failures_do_not_ask_windows(self):
+        with self.assertRaises(urllib.error.URLError):
+            self.run_request([urllib.error.URLError(socket.timeout("timed out"))])
+        self.run_curl.assert_not_called()
 
 
 class Md5List(unittest.TestCase):

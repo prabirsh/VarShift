@@ -63,7 +63,10 @@ def _new_db(path: Path, script: str) -> sqlite3.Connection:
     path.unlink(missing_ok=True)
     con = sqlite3.connect(path)
     _open_builds.append(con)
+    # Building an index sorts on disk, by default on the system disk, which may have no room. Stay beside the data.
+    folder = str(Path(path).resolve().parent).replace("'", "''")
     con.executescript(
+        f"PRAGMA temp_store_directory='{folder}'; "
         "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA cache_size=-64000; PRAGMA temp_store=FILE;"
     )
     con.executescript(script)
@@ -452,6 +455,7 @@ def build_transcripts(sources: dict[str, Path], out: Path, build: str) -> dict:
 
 
 # ClinVar
+_CLINVAR_INFO = {"RS", "CLNSIG", "CLNREVSTAT", "CLNDN", "GENEINFO", "MC", "ORIGIN", "CLNHGVS", "AF_EXAC", "AF_ESP", "AF_TGP", "ONC", "SCI"}
 _NAME_RE = re.compile(
     r"^(?P<tx>[A-Z]{2}_\d+\.\d+)(?:\((?P<gene>[^)]+)\))?:(?P<c>[cnm]\.[^ ]+)(?: \((?P<p>p\.[^)]+)\))?"
 )
@@ -482,6 +486,7 @@ def build_clinvar(vcf_gz: Path, summary: Path | None, out: Path, build: str, gen
     insert = "INSERT OR IGNORE INTO clinvar VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     stats = Counter()
     batch = []
+    contigs: dict[str, str] = {}
     with open_text(vcf_gz) as handle:
         for line in handle:
             if line[0] == "#":
@@ -498,25 +503,29 @@ def build_clinvar(vcf_gz: Path, summary: Path | None, out: Path, build: str, gen
                 stats["no_alt"] += 1
                 continue
             try:
-                contig = canonical_contig(chrom, build)
+                contig = contigs.get(chrom) or contigs.setdefault(chrom, canonical_contig(chrom, build))
                 if not genome.has(contig):
                     stats["contig_not_installed"] += 1
                     continue
-                variant = normalize(genome, contig, int(pos), ref, alt)
+                at, ref, alt = _normalized_quickly(genome, contig, int(pos), ref, alt)
             except ReferenceMismatch:
                 stats["ref_mismatch"] += 1
                 continue
             except InputError:
                 stats["not_normalisable"] += 1
                 continue
-            data = dict(item.split("=", 1) for item in info.split(";") if "=" in item)
+            data = {}
+            for item in info.split(";"):
+                key, equals, value = item.partition("=")
+                if equals and key in _CLINVAR_INFO:
+                    data[key] = value
             rs = data.get("RS", "")
             batch.append(
                 (
-                    variant.contig,
-                    variant.pos,
-                    variant.ref,
-                    variant.alt,
+                    contig,
+                    at,
+                    ref,
+                    alt,
                     int(vid),
                     rs.split("|")[0] if rs else None,
                     data.get("CLNSIG"),
@@ -554,6 +563,18 @@ def build_clinvar(vcf_gz: Path, summary: Path | None, out: Path, build: str, gen
         """,
     )
     return dict(stats)
+
+
+def _normalized_quickly(genome: Genome, contig: str, pos: int, ref: str, alt: str) -> tuple[int, str, str]:
+    """88% of ClinVar is one changed base, where normalizing comes down to comparing REF with the genome.
+
+    Anything else, including a REF that doesn't match, goes to normalize(), which also raises the right error.
+    """
+    if len(ref) == 1 and len(alt) == 1 and ref != alt and ref in "ACGT" and alt in "ACGT":
+        if genome.fetch(contig, pos - 1, pos) == ref:
+            return pos, ref, alt
+    variant = normalize(genome, contig, pos, ref, alt)
+    return variant.pos, variant.ref, variant.alt
 
 
 def _consequence(mc: str) -> str | None:
@@ -781,15 +802,14 @@ def iter_uniprot(lines: Iterable[str]) -> Iterator[dict]:
 
 
 @closes_on_failure
-def build_proteins(uniprot: Path, pfam_lines: Iterable[str] | None, out: Path, pfam_cache: Path | None = None) -> dict:
-    """pfam_cache, when given, receives the rows kept from Pfam so the next build need not re-read 5 GB."""
+def build_proteins(uniprot: Path, pfam_lines: Iterable[str], out: Path) -> dict:
     con = _new_db(
         out,
         """
         CREATE TABLE uniprot(accession TEXT PRIMARY KEY, gene TEXT, reviewed INT, sequence TEXT);
         CREATE TABLE uniprot_pfam(accession TEXT, pfam TEXT, name TEXT);
         CREATE TABLE uniprot_features(accession TEXT, type TEXT, start INT, end INT, note TEXT);
-        CREATE TABLE pfam_regions(accession TEXT, pfam TEXT, start INT, end INT);
+        CREATE TABLE pfam_regions(accession TEXT, pfam TEXT, name TEXT, start INT, end INT);
         """,
     )
     stats = Counter()
@@ -812,40 +832,9 @@ def build_proteins(uniprot: Path, pfam_lines: Iterable[str] | None, out: Path, p
     if not wanted:
         con.close()
         raise SetupError("the UniProt file produced no reviewed entries; the format may have changed")
-    if pfam_lines is not None:
-        batch = []
-        columns: dict[str, int] | None = None
-        cache = gzip.open(pfam_cache, "wt", encoding="utf-8", newline="\n") if pfam_cache else None
-        for line in pfam_lines:
-            stats["pfam_lines_read"] += 1
-            fields = line.rstrip("\n").split("\t")
-            if columns is None:
-                _require_columns("Pfam regions", fields, ["pfamseq_acc", "pfamA_acc", "seq_start", "seq_end"])
-                columns = {name: fields.index(name) for name in ("pfamseq_acc", "pfamA_acc", "seq_start", "seq_end")}
-                if cache:
-                    cache.write(line)
-                continue
-            if fields[columns["pfamseq_acc"]] in wanted:
-                if cache:
-                    cache.write(line)
-                batch.append(
-                    (
-                        fields[columns["pfamseq_acc"]],
-                        fields[columns["pfamA_acc"]],
-                        int(fields[columns["seq_start"]]),
-                        int(fields[columns["seq_end"]]),
-                    )
-                )
-                stats["pfam_regions"] += 1
-                if len(batch) >= _BATCH:
-                    con.executemany("INSERT INTO pfam_regions VALUES(?,?,?,?)", batch)
-                    batch.clear()
-        con.executemany("INSERT INTO pfam_regions VALUES(?,?,?,?)", batch)
-        if cache:
-            cache.close()
-        if stats["pfam_lines_read"] < 2:
-            con.close()
-            raise SetupError("the Pfam stream held no rows; the format may have changed")
+    con.executemany("INSERT INTO pfam_regions VALUES(?,?,?,?,?)", _pfam_regions(pfam_lines, wanted, stats))
+    if not stats["pfam_regions"]:
+        raise SetupError("the Pfam file matched none of the UniProt proteins; the format may have changed")
     _finish_db(
         con,
         """
@@ -856,6 +845,30 @@ def build_proteins(uniprot: Path, pfam_lines: Iterable[str] | None, out: Path, p
         """,
     )
     return dict(stats)
+
+
+def _pfam_regions(lines: Iterable[str], wanted: set[str], stats: Counter):
+    """Rows of a Pfam proteome file, whose column names sit in a comment: #<seq id> <alignment start> ..."""
+    columns: dict[str, int] | None = None
+    for line in lines:
+        if line.startswith("#"):
+            names = re.findall(r"<([^>]+)>", line)
+            if names:
+                _require_columns("Pfam regions", names, ["seq id", "alignment start", "alignment end", "hmm acc", "hmm name"])
+                columns = {name: index for index, name in enumerate(names)}
+            continue
+        if columns is None:
+            _require_columns("Pfam regions", [], ["seq id", "alignment start", "alignment end", "hmm acc", "hmm name"])
+        fields = line.rstrip("\n").split("\t")
+        if fields[columns["seq id"]] in wanted:
+            stats["pfam_regions"] += 1
+            yield (
+                fields[columns["seq id"]],
+                fields[columns["hmm acc"]],
+                fields[columns["hmm name"]],
+                int(fields[columns["alignment start"]]),
+                int(fields[columns["alignment end"]]),
+            )
 
 
 # CIViC

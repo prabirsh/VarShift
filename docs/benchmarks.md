@@ -45,10 +45,10 @@ These come from other people's papers, on other data and hardware. **They are no
 | ANNOVAR | 75.3% | 98.1% | 164,549 two-star ClinVar variants, [Human Genomics 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/) |
 | SnpEff | 98.8% | 98.6% | Same |
 | VEP | 97.7% | 99.1% | Same |
-| VarSight, SNVs | 99.98% | 99.99% | 12 genes only, [validation](validation.md) |
-| VarSight, indels | 99.83% | 99.45% | 12 genes only |
+| VarSight, SNVs | 99.51% | 99.38% | 20,027 names across hg19, [validation](validation.md) |
+| VarSight, indels | 98.09% | 95.98% | Same |
 
-VarSight's set is much smaller and easier, so expect its whole-genome figures to be lower. Run `varsight validate` to measure your own.
+VarSight's sample is much smaller than the study's, covers hg19 only and has no review-star filter, so these figures aren't directly comparable. Run `varsight validate` to measure your own.
 
 ### Time for a 30x genome on one core
 
@@ -61,21 +61,48 @@ VarSight's set is much smaller and easier, so expect its whole-genome figures to
 
 VarSight is a Python program and isn't built to win this. At the TSV rates above with 4 processes, about 5 million records would take around 3 to 4 hours on this laptop, if every record were as slow as these gene-dense ones. Its strengths are single variants and exome-sized files on an ordinary laptop.
 
+## Setup time
+
+A complete hg19 setup ran on 2 November 2026, on the laptop above, natively on Windows with the data on a second drive, at about 2.3 MB/s. It took 44 minutes, including a restart that repeated about 3 of them, and ended with all 5 hg19 known variants passing. hg38 hasn't been timed, so its figures are estimates.
+
+| Step | Time | Size kept | Notes |
+| - | -: | -: | - |
+| hg19 reference | 11 min | 3.0 GB | About 7 of them downloading |
+| Genes, CIViC | 2 min | 15 MB | |
+| UniProt, Pfam | 2 min | 20 MB | The old 4.7 GB Pfam read was on course for 12 to 14 hours |
+| Transcripts | 6 min | 94 MB | 82,539 RefSeq and 196,483 GENCODE transcripts |
+| ClinVar | 20 min | 1.6 GB | 5 downloading and 15 building, for 4.6 million records |
+| **Total for one build** | **41 min** | **4.7 GB** | |
+
+The build steps peaked at 316 MB of memory, measured in WSL.
+
+### Data on a Windows drive, used from WSL
+
+It works, and setting up from PowerShell and then reading the same folder from WSL is the practical way to do it. Building from WSL is the slow part. Measured on the same data on `I:`:
+
+| Task | PowerShell | WSL through `/mnt/i` |
+| - | -: | -: |
+| First read of a place in the reference | 0.45 ms | 7 ms, or 54 ms with WSL's memory nearly full |
+| The same place again | | 0.007 ms |
+| Building one test index of 600,000 rows | 2.4 s | 65 to 96 s |
+| One `varsight annotate` command, start to finish | | About 2 s, mostly loading the code through the same link |
+| Copying the 3.2 GB reference into WSL | | 13 min |
+
 ## System requirements
 
 | Need | Minimum | Notes |
 | - | - | - |
 | System | Ubuntu or similar Linux, WSL, or Windows 10 and later | PowerShell and Command Prompt both work |
 | Python | 3.10 or newer | Nothing else to install |
-| Memory | 2 GB free for a large VCF | Measured at under 150 MB per process for one report on 3,000 records, and about 500 MB plus 75 MB per worker for all three reports on 30,000. The HTML report keeps up to 20,000 rows in memory, so this should level off beyond that size. For a very large VCF on a tight machine, add `out=results.tsv`. Full setup memory hasn't been measured |
+| Memory | 2 GB free for a large VCF | Measured at under 150 MB per process for one report on 3,000 records, and about 500 MB plus 75 MB per worker for all three reports on 30,000. The HTML report keeps up to 20,000 rows in memory, so this should level off beyond that size. For a very large VCF on a tight machine, add `out=results.tsv`. Setup peaked at 316 MB |
 | CPU | Any | More cores help on a large VCF, up to 4 by default |
 
-Disk and download depend on what you choose. Download sizes were read from each server, while disk sizes are estimates until a full setup has been run.
+Disk and download depend on what you choose. Download sizes were read from each server. Disk sizes were measured for hg19 and are estimates for hg38.
 
 | You choose | Download | Kept on disk | Free during setup |
 | - | - | -: | -: |
-| hg19 | 2.3 GB, plus 4.7 GB of Pfam read without saving | About 5 GB | About 15 GB |
-| hg38 | 2.4 GB, plus 4.7 GB of Pfam read without saving | About 5 GB | About 15 GB |
-| Both | 3.3 GB, plus 4.7 GB of Pfam read without saving | About 10 GB | About 25 GB |
+| hg19 | 1.7 GB | About 5 GB | About 15 GB |
+| hg38 | 1.9 GB | About 5 GB | About 15 GB |
+| Both | 3.0 GB | About 10 GB | About 25 GB |
 
 Advanced databases add to this, from under 5 MB (Cancer Hotspots) to 59 GB read for gnomAD. See [data sources](data-sources.md#advanced-databases).

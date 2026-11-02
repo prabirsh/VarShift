@@ -1,6 +1,7 @@
 """The command line, the setup questions, the update notice, and the priority sorting."""
 
 import contextlib
+import errno
 import io
 import json
 import os
@@ -85,6 +86,37 @@ class Config(Settings):
             self.assertEqual(resolve_data_dir(), (self.root / "env").resolve())
             self.assertEqual(resolve_data_dir(str(self.root / "given")), (self.root / "given").resolve())
 
+    def test_setup_refuses_a_windows_drive_from_wsl_unless_told(self):
+        windows_drive = self.root / "drive"
+        with mock.patch.object(cli, "is_windows_mount", return_value=True), mock.patch("varsight.pipeline.manager.DataManager") as manager:
+            self.assertEqual(cli.main(["setup", "build=hg19", f"data={windows_drive}", "yes"]), 1)
+            manager.assert_not_called()
+            with mock.patch.object(cli, "_selftest", return_value=0):
+                self.assertEqual(cli.main(["setup", "build=hg19", f"data={windows_drive}", "yes", "windowsdrive"]), 0)
+            manager.assert_called_once()
+
+    def test_running_out_of_memory_says_what_to_do(self):
+        with mock.patch.object(cli, "HANDLERS", {"version": mock.Mock(side_effect=OSError(errno.ENOMEM, "Cannot allocate memory"))}):
+            with mock.patch("sys.stderr", new=io.StringIO()) as stderr:
+                self.assertEqual(cli.main(["version"]), 1)
+        self.assertIn("Cannot allocate memory", stderr.getvalue())
+        self.assertIn("run the same command again", stderr.getvalue())
+
+    @unittest.skipIf(os.name == "nt", "a Windows folder is correct on Windows")
+    def test_a_windows_folder_is_refused_on_linux(self):
+        """Bash removes the backslash, so I:\\data used to become a new folder called I:data right here."""
+        for text, hint in (("I:VIP-Annotations", "/mnt/i/VIP-Annotations"), ("C:\\data\\run", "/mnt/c/data/run"), ("d:/x", "/mnt/d/x")):
+            with self.assertRaises(InputError) as caught:
+                resolve_data_dir(text)
+            self.assertIn(hint, str(caught.exception))
+        with mock.patch.dict(os.environ, {"VARSIGHT_DATA": "I:\\data"}), self.assertRaises(InputError):
+            resolve_data_dir()
+        self.assertEqual(resolve_data_dir("/mnt/i/data"), Path("/mnt/i/data").resolve())
+
+    @unittest.skipUnless(os.name == "nt", "only Windows has drive letters")
+    def test_a_windows_folder_is_accepted_on_windows(self):
+        self.assertEqual(resolve_data_dir("I:\\data"), Path("I:\\data").resolve())
+
     def test_a_damaged_settings_file_is_ignored(self):
         save_setting("updates", "off")
         (self.root / "varsight" / "config.json").write_text("{not json", encoding="utf-8")
@@ -115,6 +147,13 @@ class FakeManager:
 
 
 class Setup(Settings):
+    def setUp(self):
+        super().setUp()
+        # These test the questions, wherever the temporary folder happens to be. The refusal has its own test.
+        patcher = mock.patch.object(cli, "is_windows_mount", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def _run(self, *arguments, answers=None, tty=True):
         FakeManager.calls = []
         output = io.StringIO()

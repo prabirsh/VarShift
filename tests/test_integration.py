@@ -12,6 +12,7 @@ from pathlib import Path
 
 from varsight.annotate import Annotator
 from varsight.cli import main
+from varsight.config import is_windows_mount
 from varsight.errors import DataError, InputError, ReferenceMismatch, ResolveError
 from varsight.pipeline.demo import build_demo_store
 from varsight.pipeline.selftest import run_selftest
@@ -335,7 +336,7 @@ class FileRuns(WithData):
             DataStore(self.root / "nothing")
         self.assertIn("varsight setup", str(caught.exception))
 
-    @unittest.skipIf(os.name == "nt", "POSIX file modes")
+    @unittest.skipIf(os.name == "nt" or is_windows_mount(Path(tempfile.gettempdir())), "POSIX file modes")
     def test_vcf_results_are_private(self):
         target = self.root / "private.tsv"
         self._cli("annotate", str(self.vcf), f"out={target}")

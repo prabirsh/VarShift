@@ -12,6 +12,7 @@ import re
 import shutil
 import socket
 import ssl
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -27,8 +28,42 @@ log = logging.getLogger("varsight.fetch")
 CHUNK = 1024 * 1024
 ATTEMPTS = 6
 TIMEOUT = 60
+PROGRESS_EVERY = 30
 _USER_AGENT = f"VarSight/{__version__} (reference data setup)"
 _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def duration_label(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f} s"
+    minutes = round(seconds / 60)
+    return f"{minutes} min" if minutes < 60 else f"{minutes // 60} h {minutes % 60} min"
+
+
+class _Progress:
+    """Says how a long transfer is going, so that a slow one can't be taken for a stuck one."""
+
+    def __init__(self, url: str, total: int | None, done: int = 0):
+        self.name = Path(urlsplit(url).path).name
+        self.total = total
+        self.done = done
+        self._first = done
+        self._began = self._said = time.monotonic()
+
+    def add(self, count: int) -> None:
+        self.done += count
+        now = time.monotonic()
+        if now - self._said >= PROGRESS_EVERY and self.done > self._first:
+            self._said = now
+            log.info("    %s", self._report(now - self._began))
+
+    def _report(self, seconds: float) -> str:
+        per_second = (self.done - self._first) / max(seconds, 0.001)
+        speed = f"{per_second / 1024**2:.1f} MB/s" if per_second >= 1024**2 else f"{per_second / 1024:.0f} KB/s"
+        if not self.total:
+            return f"{self.name}: {self.done / 1024**2:,.0f} MB so far, {speed}"
+        left = duration_label(max(self.total - self.done, 0) / per_second)
+        return f"{self.name}: {self.done / self.total:.0%} of {self.total / 1024**2:,.0f} MB, {speed}, about {left} left"
 
 
 @dataclass
@@ -57,10 +92,13 @@ class Fetcher:
         self.timeout = timeout
         # Only the test suite passes this, for a server it runs on 127.0.0.1.
         self.allow_http_hosts = set(allow_http_hosts)
-        self._context = ssl.create_default_context()
-        self._opener = urllib.request.build_opener(
+        self._roots_asked: set[str] = set()
+        self._opener = self._make_opener()
+
+    def _make_opener(self):
+        return urllib.request.build_opener(
             _CheckedRedirect(self._check_url),
-            urllib.request.HTTPSHandler(context=self._context),
+            urllib.request.HTTPSHandler(context=ssl.create_default_context()),
         )
 
     def _check_url(self, url: str) -> None:
@@ -76,7 +114,28 @@ class Fetcher:
     def _request(self, url: str, headers: dict | None = None, method: str = "GET"):
         self._check_url(url)
         request = urllib.request.Request(url, method=method, headers={"User-Agent": _USER_AGENT, **(headers or {})})
+        try:
+            return self._opener.open(request, timeout=self.timeout)
+        except urllib.error.URLError as exc:
+            if not (isinstance(exc.reason, ssl.SSLCertVerificationError) and self._ask_windows_for_root(url)):
+                raise
         return self._opener.open(request, timeout=self.timeout)
+
+    def _ask_windows_for_root(self, url: str) -> bool:
+        """Windows adds a trusted root only when its own client first needs it, and Python can't trigger that.
+
+        So after a refusal, curl.exe from System32 visits the host once. Python then checks the certificate
+        itself, as strictly as before. On any other system this does nothing and the refusal stands.
+        """
+        host = urlsplit(url).hostname
+        curl = _windows_curl()
+        if curl is None or host in self._roots_asked:
+            return False
+        self._roots_asked.add(host)
+        log.info("  asking Windows for the certificate root of %s", host)
+        subprocess.run([str(curl), "-sI", "-m", "30", f"https://{host}/"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        self._opener = self._make_opener()
+        return True
 
     def head(self, url: str) -> RemoteInfo:
         for attempt in range(1, self.attempts + 1):
@@ -152,6 +211,7 @@ class Fetcher:
                         have = 0  # the server ignored the range request, so start over
                     mode = "ab" if have else "wb"
                     written = have
+                    progress = _Progress(url, remote.size, have)
                     with open(partial, mode) as out:
                         while True:
                             block = response.read(CHUNK)
@@ -161,6 +221,7 @@ class Fetcher:
                             if written > max_bytes:
                                 raise SetupError(f"{url} grew past the {max_bytes:,} byte limit set for it")
                             out.write(block)
+                            progress.add(len(block))
                 if remote.size is None or written >= remote.size:
                     break
             except (urllib.error.URLError, socket.timeout, ConnectionError, ssl.SSLError, OSError) as exc:
@@ -179,7 +240,8 @@ class Fetcher:
             partial.unlink()
             meta_path.unlink(missing_ok=True)
             raise SetupError(f"{url} failed its MD5 check (expected {expected_md5}, got {md5}); the file was removed")
-        if _is_gzip(partial):
+        # A matching MD5 already proves the file is whole, and unpacking a genome just to check it takes minutes.
+        if _is_gzip(partial) and not expected_md5:
             _test_gzip(partial)
         os.replace(partial, dest)
         meta_path.unlink(missing_ok=True)
@@ -213,6 +275,7 @@ class ResumingStream(io.RawIOBase):
         self._response = None
         self._failures = 0
         self._digest = hashlib.sha256()
+        self._progress = _Progress(remote.url, remote.size)
 
     def readable(self) -> bool:
         return True
@@ -249,6 +312,7 @@ class ResumingStream(io.RawIOBase):
                 continue
             self._offset += count
             self._digest.update(memoryview(buffer)[:count])
+            self._progress.add(count)
             return count
 
     def _close_response(self) -> None:
@@ -293,6 +357,13 @@ def _remote_info(url: str, response) -> RemoteInfo:
         response.headers.get("ETag", "") or "",
         response.headers.get("Last-Modified", "") or "",
     )
+
+
+def _windows_curl() -> Path | None:
+    if os.name != "nt":
+        return None
+    curl = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "curl.exe"
+    return curl if curl.is_file() else None
 
 
 def md5_from_list(text: str, file_name: str) -> str | None:

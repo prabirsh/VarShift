@@ -8,6 +8,7 @@ import logging
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +16,7 @@ from unittest import mock
 from tests.helpers import tiny_bigwig
 from varsight.annotate import Annotator
 from varsight.errors import DataError, SetupError
+from varsight.pipeline import manager as manager_module
 from varsight.pipeline import updatecheck
 from varsight.pipeline.fetch import Fetcher
 from varsight.pipeline.manager import DataManager, load_catalog
@@ -52,6 +54,26 @@ ADVANCED = {
     "phylop_hg19": "phylop.bw",
     "phylop_hg38": "phylop.bw",
 }
+
+
+class CoreSources(unittest.TestCase):
+    def test_setup_reads_no_huge_file_off_the_network(self):
+        """Reading Pfam's 4.7 GB file once made setup take most of a day, on a server giving 100 KB/s."""
+        catalog = load_catalog()
+        plan = DataManager(Path("unused"), catalog, Fetcher([]))._plan(["hg19", "hg38"])
+        core = {source for name in plan for source in catalog["artifacts"][name]["sources"]}
+        self.assertIn("pfam_regions", core)
+        for source in core:
+            self.assertFalse(catalog["sources"][source].get("stream"), source)
+        self.assertLessEqual(catalog["sources"]["pfam_regions"]["max_mb"], 20)
+
+
+class Reporting(unittest.TestCase):
+    def test_a_long_build_keeps_saying_it_is_going(self):
+        with mock.patch.object(manager_module, "STILL_GOING_EVERY", 0.01), self.assertLogs("varsight.data", "INFO") as logs:
+            with manager_module._still_going("building something"):
+                time.sleep(0.1)
+        self.assertIn("still building something", logs.output[0])
 
 
 class Server(http.server.BaseHTTPRequestHandler):
@@ -261,22 +283,6 @@ class Lifecycle(WithServer):
         self.assertEqual(items["transcripts.hg19"].action, "updated", items["transcripts.hg19"].detail)
         manager.rollback()
         path.write_bytes(original)
-
-    def test_skipping_pfam_at_setup_is_remembered_by_updates(self):
-        folder = tempfile.TemporaryDirectory()
-        self.addCleanup(folder.cleanup)
-        fetcher = Fetcher(["127.0.0.1"], retry_delay=0.01, allow_http_hosts=("127.0.0.1",))
-        manager = DataManager(Path(folder.name), json.loads(json.dumps(self.catalog)), fetcher)
-        manager._prepare_folders()
-        manifest = manager.load_manifest()
-        built = manager._build("proteins", {"skip_pfam_regions": True})
-        manager._publish(manifest, built, None)
-        self.handler.get_requests.clear()
-
-        items = {i.artifact: i for i in manager.update()}
-
-        self.assertEqual(items["proteins"].action, "none", items["proteins"].changed)
-        self.assertNotIn("/pfam_regions.tsv.gz", self.handler.get_requests)
 
     def test_a_changed_source_that_cannot_be_read_is_reported(self):
         manager = self._make_manager()

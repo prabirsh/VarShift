@@ -56,7 +56,6 @@ varsight-data/
   update_status.json     what the last update check found
   snapshots/             the previous version of anything updated
   reports/               a report of each setup and update
-  cache/                 the human rows kept from Pfam, so an update need not re-read 5 GB
 ```
 
 One file per source and build means a weekly update replaces only what changed. A process already running keeps the file it opened, so an update never disturbs it.

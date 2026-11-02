@@ -305,9 +305,7 @@ class DataStore:
         if db is None:
             return []
         return db.execute(
-            "SELECT r.pfam, r.start, r.end, p.name FROM pfam_regions r "
-            "LEFT JOIN uniprot_pfam p ON p.accession=r.accession AND p.pfam=r.pfam "
-            "WHERE r.accession=? AND r.start<=? AND r.end>=?",
+            "SELECT pfam, name, start, end FROM pfam_regions WHERE accession=? AND start<=? AND end>=?",
             (accession, residue, residue),
         ).fetchall()
 

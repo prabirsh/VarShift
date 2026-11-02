@@ -2,6 +2,28 @@
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- The first whole-genome accuracy measure, on 20,027 ClinVar names across hg19, and the first complete setup from start to self-test. See [docs/validation.md](docs/validation.md), including the known limit on transcripts with a gap against hg19.
+
+### Changed
+
+- Setup takes domain positions from Pfam's 2.8 MB human file, release 37.0, instead of reading the 4.7 GB file for every species, which was on course to take 12 to 14 hours on a home connection. The cost is listed in [data sources](docs/data-sources.md). The `nopfam` word is gone, since there is nothing left to skip.
+- Long downloads now print how far they have got, their speed and the time left, and long builds say once a minute that they are still going.
+- A running setup remembers its data folder, so running it again after an interruption offers the same one.
+
+### Fixed
+
+- Setup, the demo and the benchmark no longer write to the system disk. SQLite's sort files, which can reach gigabytes while an index is built, and all temporary folders now stay beside the data or the output.
+- UCSC now redirects its downloads to its Amazon bucket, `genome-browser.s3.amazonaws.com`, so setup stopped at the first step. That one bucket is now on the allow-list. Redirects still go through the same check, and the reference is still compared with UCSC's published MD5.
+- Setup from WSL now refuses a data folder on a Windows drive unless you add `windowsdrive`. It was slow, and with memory tight it stopped with `Cannot allocate memory`. That error now says what to do.
+- On Linux and WSL, `data=I:\folder` is now refused with the right spelling. Bash removes the backslash, so it used to create a new folder called `I:folder` in the current directory and download everything again.
+- On Windows, setup could stop at the ClinGen servers with `CERTIFICATE_VERIFY_FAILED`, because Windows adds a trusted root only when its own client first needs it.
+- A file with a matching MD5 is no longer unpacked once more just to check it.
+- ClinVar records are read about 38% faster, with byte-identical results, because one changed base no longer goes through the full normaliser.
+
 ## [0.1.0] - 2026-11-01
 
 First release.

@@ -4,18 +4,56 @@ This page says what was tested, how, what came out, and what hasn't been proven.
 
 **VarSight has not been validated for clinical use.** A laboratory using it for patient care must do its own validation.
 
-## Test set
+## Whole-genome sample
+
+On 2 November 2026, `varsight validate sample=20000` ran on a complete hg19 setup. It takes evenly spaced names from all of ClinVar, 20,027 in this run, so it is a much harder test than the 12 genes below. A second run from WSL, on 1,998 names, gave similar rates. hg38 hasn't been measured this way, and no cross-build check was possible with one build installed.
+
+The full report, with examples from every mismatch group, is in [validation-results/clinvar-hg19-whole-genome.md](validation-results/clinvar-hg19-whole-genome.md).
+
+| Test | What it checks | Passed | Rate |
+| - | - | -: | -: |
+| `forward_c_snv` | Genome position gives ClinVar's c. name | 18,448 of 18,539 | 99.51% |
+| `forward_c_indel` | The same, for indels | 1,386 of 1,413 | 98.09% |
+| `forward_p_snv` | Genome position gives ClinVar's p. name | 14,917 of 15,010 | 99.38% |
+| `forward_p_indel` | The same, for indels | 956 of 996 | 95.98% |
+| `reverse_c_snv` | c. name gives ClinVar's position | 18,448 of 18,539 | 99.51% |
+| `reverse_c_indel` | The same, for indels | 1,397 of 1,413 | 98.87% |
+| `reverse_p_snv` | ClinVar's position is among the candidates for its p. name | 15,022 of 15,048 | 99.83% |
+| `reverse_p_indel` | The same, for indels | 991 of 996 | 99.50% |
+| `consequence_snv` | Effect agrees with ClinVar's molecular consequence | 18,529 of 18,564 | 99.81% |
+| `consequence_indel` | The same, for indels | 1,387 of 1,398 | 99.21% |
+
+### What the mismatches are
+
+Every mismatch in the four `forward` tests, sorted by cause:
+
+| Cause | c. SNV | c. indel | p. SNV | p. indel |
+| - | -: | -: | -: | -: |
+| The transcript has a gap against hg19 | 84 | 10 | 71 | 10 |
+| The same change, spelled or placed differently | 0 | 16 | 0 | 28 |
+| No p. name, because the transcript has an in-frame stop on hg19 | 0 | 0 | 19 | 0 |
+| Other, including transcripts placed differently on hg19 | 7 | 1 | 3 | 2 |
+| **Total** | **91** | **27** | **93** | **40** |
+
+- **Gaps are a real limit in VarSight, and the main one found so far.** About 1,100 of the 82,539 RefSeq transcripts on hg19, 275 of them MANE Select, have an indel or frameshift against the genome. VarSight numbers a transcript from its exons and doesn't yet use RefSeq's alignment of the gap, so everything after the gap is off by its length. In ALMS1 `NM_001378454.1`, `chr2-73675519-A-G` gets `c.1862A>G` and `p.Tyr621Cys`, where ClinVar has `c.1865A>G` and `p.Tyr622Cys`.
+- **The same limit affects c. names given as input.** Of the 25 mismatches listed in the report for `reverse_c_snv`, 17 were refused with `no transcript fits`, and 8 were placed 3 bases from ClinVar's position because the wrong base happened to match. Results on these transcripts carry the warning `transcript_differs_from_genome`. **Don't rely on a name or position that carries this warning without checking it against the transcript.**
+- **Same change, spelled differently:** ClinVar's `p.Glu43_Ser44insGlu` is VarSight's `p.Glu43dup`, its `p.Ser290delinsArgTer` is VarSight's `p.Ser290ArgfsTer2`, and its `c.1366-23dup` is VarSight's `c.1366-15dup`, moved to the 3' end of the repeat. Counting these as agreement gives 99.22% for c. indels and 98.80% for p. indels.
+- **No p. name:** VarSight refuses to translate a transcript with an in-frame stop on hg19 and flags it `cds_internal_stop`. This covers selenoproteins such as SELENON, and genes such as ACTN3.
+
+Names on a different transcript version are scored separately in the report, 53 names here, for the reason given under [lower scores on other versions](#lower-scores-on-other-versions).
+
+## 12-gene test set
 
 - **Genes:** BRAF, KRAS, NRAS, EGFR, TP53, PIK3CA, IDH1, BRCA1, BRCA2, JAK2, KIT, PTEN, with a mix of forward-strand and reverse-strand genes.
 - **Sequence:** real hg19 and hg38 windows around each gene, from UCSC.
 - **Transcripts:** the real RefSeq annotation files, filtered to these genes.
 - **ClinVar:** every record in those windows (ClinVar version 2026-10-25, about 61,000 per build).
 - **Names:** ClinVar's own c. and p. names, from the first 30 MB of `variant_summary`, giving 13,724 usable names per build.
-- **Bias:** those names are ClinVar's oldest records, in well-studied genes. Expect the whole genome to score lower.
+- **Bias:** those names are ClinVar's oldest records, in well-studied genes, which is why this set scores higher than the whole-genome sample. It is also the only test so far on hg38 and of mapping between builds.
 
 Date: 1 November 2026. Python 3.14.4 on WSL (Ubuntu 26.04). The whole run was repeated from freshly downloaded sources after the last code change on that date, and gave the same numbers.
 
-## Results
+## Results on the 12 genes
 
 The full report, with examples from every mismatch group, is in [validation-results/clinvar-12-genes.md](validation-results/clinvar-12-genes.md).
 
@@ -117,9 +155,11 @@ See [benchmarks](benchmarks.md).
 
 | What | Status | How to close it |
 | - | - | - |
-| Full-genome accuracy | Only 12 genes tested | `varsight validate sample=20000 report=validation.md` after setup |
-| Full setup | Sources and formats checked, and the cycle tested on a local server, but the 8 GB run has not been done | Run `varsight setup` |
-| Real setup time and size | Estimates | The report in `reports/` records them |
+| Transcripts with a gap against hg19 | c. and p. numbers after the gap are off by its length, and a c. name as input can be refused or misplaced. They carry a warning | Read RefSeq's alignment of the gap |
+| Whole-genome accuracy on hg38 | hg19 is measured on a 20,027-name sample, but hg38 only on 12 genes | `varsight validate sample=20000 report=validation.md` after an hg38 setup |
+| Full setup | hg19 ran from start to the self-test on 2 November 2026, natively on Windows, and all 5 known variants passed. hg38, both builds together, and a full build inside WSL haven't been run | Run `varsight setup` |
+| Real setup time and size | [Measured for hg19](benchmarks.md#setup-time). Estimates for hg38 | The report in `reports/` records them |
+| Current Pfam positions | Positions come from Pfam 37.0. [What that costs](data-sources.md#core-databases) | A newer human-only file from Pfam |
 | GENCODE and the advanced database builders | Tested on samples of real files only. See [how much of this has been tested](data-sources.md#how-much-of-this-has-been-tested) | Run them on full files |
 | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | Written from documented columns, without a real file | Add your own file. It stops with a clear message if the columns differ |
 | Python 3.10 to 3.13 | Not run yet | CI, once on GitHub |

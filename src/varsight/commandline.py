@@ -60,7 +60,7 @@ COMMANDS: dict[str, Command] = {
         flags={
             "yes": "don't ask anything; use the options given",
             "rebuild": "rebuild even what is already installed",
-            "nopfam": "skip the 4.7 GB Pfam read; domain positions will be missing",
+            "windowsdrive": "from WSL, allow a data folder on a Windows drive, though it is slow and can run out of memory",
         },
         examples=("varsight setup", "varsight setup build=hg38 data=/data/varsight yes"),
     ),

@@ -2,6 +2,7 @@
   "_comment": "Every external file VarSight reads. Annotation itself never uses the network; only setup and update read this list. Licence notes are a summary, not legal advice: check them against your own use.",
   "allowed_hosts": [
     "hgdownload.soe.ucsc.edu",
+    "genome-browser.s3.amazonaws.com",
     "ftp.ensembl.org",
     "ftp.ncbi.nlm.nih.gov",
     "ftp.ebi.ac.uk",
@@ -138,10 +139,9 @@
       "license": "CC BY 4.0"
     },
     "pfam_regions": {
-      "name": "Pfam-A regions",
-      "url": "https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.regions.tsv.gz",
-      "stream": true,
-      "max_mb": 12000,
+      "name": "Pfam 37.0 human regions",
+      "url": "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/proteomes/9606.tsv.gz",
+      "max_mb": 20,
       "license": "CC0 per InterPro"
     },
     "civic_variants": {

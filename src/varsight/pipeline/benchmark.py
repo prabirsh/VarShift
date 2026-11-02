@@ -76,7 +76,7 @@ def _write_test_vcf(store: DataStore, build: str, path: Path, records: int) -> i
 def run_benchmark(data_dir: Path, records: int = 3000) -> str:
     store = DataStore(data_dir)
     build = "hg38" if "hg38" in store.builds else store.builds[0]
-    work = Path(tempfile.mkdtemp(prefix="varsight-benchmark-"))
+    work = Path(tempfile.mkdtemp(prefix="varsight-benchmark-", dir=data_dir))
     try:
         vcf = work / "test.vcf"
         written = _write_test_vcf(store, build, vcf, records)

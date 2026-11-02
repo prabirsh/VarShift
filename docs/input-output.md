@@ -136,7 +136,7 @@ For a VCF over 1 MB, VarSight uses up to 4 processes, each with its own read-onl
 | `other_transcript_used` | The default transcript didn't fit, so another one was used | Check this is the isoform that was meant |
 | `transcript_version_substituted` | The version you named isn't installed, so another version of that transcript was used | Numbering can differ between versions, particularly in UTRs. Check the result |
 | `protein_version_substituted` | The same, for a protein accession | Check the result |
-| `transcript_differs_from_genome` | RefSeq says this transcript doesn't exactly match the genome here | c. and p. are computed from the genome, so check them against the transcript |
+| `transcript_differs_from_genome` | RefSeq says this transcript doesn't exactly match the genome here | c. and p. are computed from the genome. If the difference is an indel or frameshift, numbers after it are off by its length, and a c. name given as input can land a few bases away. Check them against the transcript. See [validation](validation.md#what-the-mismatches-are) |
 | `mane_version_differs` | The installed transcript is a different version from the MANE one | Common on hg19. Numbering usually agrees, but check |
 | `spans_exon_intron_boundary` | The change crosses an exon-intron boundary, so no protein name is given | Review splicing by hand |
 | `overlaps_start_codon`, `overlaps_stop_codon` | The change runs over the start or stop codon | Review by hand |

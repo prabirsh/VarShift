@@ -451,10 +451,12 @@ def render_card(record: dict) -> str:
         heading += f"   (candidate {candidate['rank']} of {candidate['of']})"
     where = f"exon {effect['exon']}" if effect.get("exon") else (f"intron {effect['intron']}" if effect.get("intron") else "")
     transcript_text = " ".join(filter(None, [transcript.get("accession"), f"({transcript['mane']})" if transcript.get("mane") else None]))
+    flags = record.get("flags") or []
+    missing = "not installed" if {"other_build_not_installed", "liftover_data_not_installed"} & set(flags) else "no mapping"
     lines = [
         heading,
         f"  Priority    {priority.get('label')}: {'; '.join(priority.get('reasons', []))}",
-        f"  Position    hg19 {variant['hg19']['key'] or 'no mapping'}    hg38 {variant['hg38']['key'] or 'no mapping'}",
+        f"  Position    hg19 {variant['hg19']['key'] or missing}    hg38 {variant['hg38']['key'] or missing}",
         f"  Gene        {gene}   {transcript_text}",
         f"  HGVS        {_short_name(hgvs['c'])}   {_short_name(hgvs['p'])}",
         f"  Effect      {' '.join(filter(None, [effect.get('type'), where])) or 'not determined'}",

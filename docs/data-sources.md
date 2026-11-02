@@ -25,13 +25,23 @@ Sizes and dates were read from each server on 1 November 2026, using header requ
 | ClinVar variant_summary | HGVS names, p. lookup | 435.4 MB | Weekly | Automatic | NCBI, as above |
 | HGNC complete set | Gene names, aliases, IDs | 16.2 MB | Often | Automatic | CC0, per HGNC |
 | UniProt human reference proteome | Sequence, Pfam IDs, features | 126.6 MB | Monthly | Automatic | CC BY 4.0: credit UniProt |
-| Pfam-A regions | Domain positions | 4.7 GB, read without saving | Jan 2026 | Automatic | CC0, per InterPro |
+| Pfam 37.0 human regions | Domain positions | 2.8 MB | May 2024 | Fixed release | CC0, per InterPro |
 | CIViC | Cancer evidence | 4.6 MB | Nightly | Automatic | CC0, per CIViC |
 | ClinGen validity and dosage | Gene-level curation | 1.3 MB | Often | Automatic | CC0, per ClinGen |
 | gnomAD v2.1.1 constraint | pLI, LOEUF | 4.4 MB | Aug 2020 | Automatic | Licence terms not confirmed; see gnomad.broadinstitute.org |
 | HPO genes to disease | Gene-disease links | 1.4 MB | Sep 2026 | Automatic | Free with citation of the HPO Consortium; see hpo.jax.org |
 
-Downloads are deleted after each build. If you can't spare the Pfam read, the word `nopfam` on `varsight setup` skips it, but then domain positions are missing.
+Downloads are deleted after each build.
+
+**Why Pfam comes from an older release.** Today's Pfam only publishes one 4.7 GB file covering every species. Reading it for a few thousand human rows reached 12% after 94 minutes on a home connection, because that server gave about 100 KB/s, which puts the whole read at 12 to 14 hours. Pfam 37.0, from May 2024, is the newest release with a human-only file of 2.8 MB, so setup uses that. What this costs, measured against UniProt's current list of Pfam families for each reviewed human protein:
+
+| Set | Protein and family pairs | No position in 37.0 |
+| - | -: | -: |
+| All 20,329 reviewed human proteins | 34,809 | 3,409 (9.8%), mostly families added since 37.0 |
+| 50 common cancer genes | 164 | 5 (3.0%): PDGFRA (two), FBXW7, PMS2, TSC1 |
+| The 12 demo genes, against today's InterPro positions | 48 | 0. 45 are identical and 3 differ by one residue |
+
+A variant in one of those domains still lists the family, but not that it falls inside it. Domains only give context: they never change a name, an effect or a classification.
 
 ## Advanced databases
 

@@ -34,7 +34,7 @@ flowchart TD
     START["varsight update"] ==> CHECK["Ask each source: has this file changed? Headers only"]
     CHECK ==>|"No"| DONE["Nothing changes"]
     CHECK ==>|"Yes"| POLICY{"Update policy for this database"}
-    POLICY ==>|"Automatic: ClinVar, HGNC, UniProt, Pfam, CIViC, ClinGen, HPO"| DOWNLOAD
+    POLICY ==>|"Automatic: ClinVar, HGNC, UniProt, CIViC, ClinGen, HPO"| DOWNLOAD
     POLICY ==>|"Your approval: transcripts, MANE, large advanced databases"| WAIT["Reported; waits for approve="]
     POLICY ==>|"Once: genomes, chain files"| SKIP["Reported; not rebuilt"]
     WAIT ==>|"approve="| DOWNLOAD["Download and check integrity"]
@@ -64,7 +64,7 @@ The last two snapshots are kept. Each result records the data versions it used, 
 
 | Policy | Databases | Why |
 | - | - | - |
-| Automatic | ClinVar, HGNC, UniProt, Pfam, CIViC, ClinGen, HPO, Cancer Hotspots, DECIPHER, ClinGen classifications | Small and frequent, and don't change how variants are named |
+| Automatic | ClinVar, HGNC, UniProt, CIViC, ClinGen, HPO, Cancer Hotspots, DECIPHER, ClinGen classifications | Small and frequent, and don't change how variants are named |
 | Your approval | RefSeq, GENCODE, MANE, dbSNP, gnomAD, 1000 Genomes, REVEL, AlphaMissense, phyloP | Transcript releases can change c. and p. names you have already reported, and the others are very large downloads |
 | Once | Reference genomes, chain files | Not expected to change |
 | Your own file | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | They need your account, so VarSight can't fetch them. To update one, download the new release and run `varsight add` again |

@@ -88,8 +88,9 @@ Advanced databases are optional, and can be added any time later.
 Numbers to add now, separated by commas, or press Enter for none:
 
 This will install: hg19 into /home/you/varsight-data
-  Download   about 2.3 GB, plus 4.7 GB of Pfam read without saving
-  Disk       about 5 GB kept, and keep about 15 GB free during setup (estimates)
+  Download   about 1.7 GB
+  Disk       about 5 GB kept, and keep about 15 GB free during setup
+  Time       about 45 minutes on a 2 MB/s connection. If it stops, run it again and it carries on
 Start? yes or no: [yes]
 ```
 
@@ -103,23 +104,40 @@ varsight setup build=hg38 data=/data/varsight yes
 
 | System | Use | Why |
 | - | - | - |
-| WSL | `~/varsight-data`, on the Linux disk | Lookups measured 27 microseconds there, against 1.3 to 1.8 ms on a Windows drive seen from WSL (`/mnt/c`, `/mnt/i`), so about 50 to 65 times faster |
+| WSL | `~/varsight-data`, on the Linux disk | Lookups measured 27 microseconds there, against 1.3 to 1.8 ms on a Windows drive seen from WSL (`/mnt/c`, `/mnt/i`) |
 | Ubuntu | Any local disk | |
 | Windows | Any local NTFS folder under your user profile | Your profile is private to you by default |
 
-**Time:** estimated at 1 to 2 hours on a typical connection, though this hasn't been timed. Plug the laptop in and keep it awake.
+**If your Linux disk has no room, keep the data on a Windows drive, but build it from PowerShell.** Building from WSL on a Windows drive is about 30 times slower and, with WSL's memory tight, can stop with `Cannot allocate memory`, so setup refuses it unless you add the word `windowsdrive`. WSL's Linux disk is a file on C:, so `~/varsight-data` uses C: too. Set up once in PowerShell, then point WSL at the same files:
 
-**If it stops** because the connection dropped or the laptop slept, run the same command again. It resumes partial downloads and skips anything already built.
-
-To skip the 4.7 GB Pfam read, at the cost of domain positions:
-
-```bash
-varsight setup nopfam
+```powershell
+varsight setup build=hg19 data=I:\VIP-Annotations yes
 ```
 
-At the end it runs the known-variant self-test. You want to see `11 of 11 known variants passed`.
+```bash
+varsight config data=/mnt/i/VIP-Annotations
+```
 
-**If a known variant fails or setup stops with an error,** please keep the message and report it. This full run hasn't been done before, so a problem here is useful to know about.
+Each `varsight` command then takes about 2 seconds in WSL. See [the measurements](benchmarks.md#data-on-a-windows-drive-used-from-wsl). WSL refuses the Windows spelling `I:\VIP-Annotations`, because bash would remove the backslash.
+
+**Time:** about 45 minutes for one build on a 2-core laptop with a 2 MB/s connection, and an estimated 1.5 hours for both. See [the time for each step](benchmarks.md#setup-time). Plug the laptop in and keep it awake.
+
+**While it runs,** it always says what it is doing. Every long download prints how far it has got, its speed and the time left, and every long build says once a minute that it is still going. So more than a few minutes of silence means something is wrong.
+
+```text
+[5/6] clinvar.hg19
+  downloading ClinVar GRCh37 VCF (191.4 MB)
+    clinvar.vcf.gz: 40% of 191 MB, 2.4 MB/s, about 48 s left
+  building clinvar.hg19
+    still building clinvar.hg19, 1 min so far
+  finished clinvar.hg19 in 20 min
+```
+
+**If it stops,** or you stop it with Ctrl+C, run the same command again. It resumes partial downloads and skips anything already built. If the data folder isn't the one it offers, give it with `data=`.
+
+At the end it runs the known-variant self-test. You want all of them to pass: `5 of 5 known variants passed` on hg19 alone.
+
+**If a known variant fails or setup stops with an error,** please keep the message and report it. Few complete runs have been done so far, so a problem here is useful to know about.
 
 ## 3. Annotate
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from varsight import report
+from varsight.config import is_windows_mount
 from varsight.errors import InputError
 from varsight.links import build_links, link_names
 from varsight.output import ReportContext, ReportFolder, ScreenSink, _guard_cell, columns, flatten, format_of, open_file_sink, render_card
@@ -77,7 +78,7 @@ class FileHandling(Folder):
         open_file_sink(target, self.context, replace=True).close()
         self.assertNotEqual(target.read_text(), "precious")
 
-    @unittest.skipIf(os.name == "nt", "POSIX file modes")
+    @unittest.skipIf(os.name == "nt" or is_windows_mount(Path(tempfile.gettempdir())), "POSIX file modes")
     def test_every_report_is_private(self):
         folder = ReportFolder(self.root / "reports", self.context)
         folder.write(RECORD)
@@ -306,6 +307,14 @@ class Screen(Folder):
         lines = stream.getvalue().splitlines()
         self.assertTrue(lines[0].startswith("priority\t"))
         self.assertEqual(len(lines), 2)
+
+    def test_a_build_that_is_not_installed_is_not_called_unmappable(self):
+        record = json.loads(json.dumps(RECORD))
+        record["variant"]["hg38"]["key"] = None
+        record["flags"] = ["other_build_not_installed"]
+        self.assertIn("hg38 not installed", render_card(record))
+        record["flags"] = []
+        self.assertIn("hg38 no mapping", render_card(record))
 
     def test_a_failed_input_says_why(self):
         card = render_card({"input": {"raw": "x"}, "error": "no such gene"})

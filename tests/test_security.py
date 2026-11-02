@@ -47,10 +47,17 @@ class SourceRules(unittest.TestCase):
             bad = {name for name in imports_of(tree) if name.split(".")[0] in FORBIDDEN_MODULES}
             self.assertFalse(bad, f"{path.name} imports {bad}")
 
-    def test_only_the_update_check_starts_a_process(self):
+    def test_only_the_update_check_and_the_windows_root_request_start_a_process(self):
         for path, tree in sources():
-            if path.name != "updates.py":
+            if path.name not in ("updates.py", "fetch.py"):
                 self.assertNotIn("subprocess", {name.split(".")[0] for name in imports_of(tree)}, path.name)
+
+    def test_the_windows_root_request_has_a_fixed_command_line(self):
+        """curl.exe from System32 is given only the host of a download that has already passed the allow-list."""
+        text = (SRC / "pipeline" / "fetch.py").read_text(encoding="utf-8")
+        self.assertEqual(text.count("subprocess.run("), 1)
+        self.assertIn('subprocess.run([str(curl), "-sI", "-m", "30", f"https://{host}/"]', text)
+        self.assertIn('"System32" / "curl.exe"', text)
 
     def test_no_process_ever_goes_through_a_shell(self):
         for path, tree in sources():
@@ -90,6 +97,7 @@ class SourceRules(unittest.TestCase):
         """f-strings near execute are limited to fixed table names and placeholder lists."""
         allowed = {
             "store.py": {"marks", "table"},
+            "builders.py": {"folder"},
         }
         for path, tree in sources():
             for node in ast.walk(tree):
@@ -107,6 +115,14 @@ class SourceRules(unittest.TestCase):
         self.assertIn("mode=ro", text)
         self.assertIn("PRAGMA query_only=ON", text)
         self.assertIn("PRAGMA trusted_schema=OFF", text)
+
+    def test_only_ucsc_own_amazon_bucket_is_allowed(self):
+        """UCSC redirects its downloads there. Allowing all of Amazon would let anyone's bucket through."""
+        import json
+
+        hosts = json.loads((SRC / "data" / "sources.json").read_text(encoding="utf-8"))["allowed_hosts"]
+        self.assertIn("genome-browser.s3.amazonaws.com", hosts)
+        self.assertEqual([host for host in hosts if "amazonaws" in host], ["genome-browser.s3.amazonaws.com"])
 
     def test_every_download_host_is_on_the_allow_list_and_https(self):
         import json

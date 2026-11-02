@@ -110,7 +110,7 @@ def build_demo_store(demo_dir: Path, data_dir: Path) -> dict:
 def run_demo(demo_dir_text: str | None, out: Path, force: bool = False) -> int:
     demo_dir = find_demo_dir(demo_dir_text)
     out.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix="varsight-demo-"))
+    work = Path(tempfile.mkdtemp(prefix="varsight-demo-", dir=out))
     try:
         print(f"Building a small data set from {demo_dir / 'sources'}. Nothing is downloaded.")
         started = time.time()

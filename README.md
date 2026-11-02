@@ -150,29 +150,32 @@ Measured on a laptop with a 2-core i3 and 3.9 GB of memory, using gene-dense pub
 | 30,000 records to all three reports, the default | 170 s on WSL, 127 s on Windows |
 | Peak memory | Under 150 MB for one report on 3,000 records; about 500 MB for all three on 30,000 |
 
-| You choose | Download | Kept on disk (estimate) |
-| - | - | -: |
-| hg19 or hg38 | About 2.4 GB, plus 4.7 GB of Pfam read without saving | About 5 GB |
-| Both | 3.3 GB, plus 4.7 GB of Pfam read without saving | About 10 GB |
+| You choose | Download | Kept on disk | Setup time at 2 MB/s |
+| - | - | -: | -: |
+| hg19 or hg38 | About 1.8 GB | About 5 GB | [About 45 minutes](docs/benchmarks.md#setup-time) |
+| Both | 3.0 GB | About 10 GB | About 1.5 hours (estimate) |
 
 You need Python 3.10 or newer on Linux, WSL, or Windows 10 and later, with about 2 GB of free memory.
 
 ## How far it has been tested
 
-Real public data for 12 genes, using 13,724 ClinVar names per build. [Full results and every mismatch group](docs/validation.md).
+A sample of 20,027 ClinVar names from across the genome, on a complete hg19 setup. [Full results and every mismatch group](docs/validation.md).
 
 | Test on hg19 | Passed | Rate |
 | - | -: | -: |
-| Genome position to c. name, SNVs | 9,085 of 9,087 | 99.98% |
-| Genome position to c. name, indels | 4,022 of 4,029 | 99.83% |
-| Genome position to p. name, SNVs | 6,945 of 6,946 | 99.99% |
-| Genome position to p. name, indels | 3,617 of 3,637 | 99.45% |
-| hg19 to hg38 mapping | 13,723 of 13,723 | 100% |
+| Genome position to c. name, SNVs | 18,448 of 18,539 | 99.51% |
+| Genome position to c. name, indels | 1,386 of 1,413 | 98.09% |
+| Genome position to p. name, SNVs | 14,917 of 15,010 | 99.38% |
+| Genome position to p. name, indels | 956 of 996 | 95.98% |
+| hg19 to hg38 mapping, on 12 genes only | 13,723 of 13,723 | 100% |
+
+**Known limit: transcripts with a gap against hg19.** About 1,100 RefSeq transcripts, 275 of them MANE Select, don't align exactly to hg19, and they cause most of the mismatches above. After the gap, VarSight's c. and p. numbers are off by its length, and a c. name given as input can be refused or placed a few bases away. These results carry the warning `transcript_differs_from_genome`, so check any result that shows it.
 
 **Not yet proven:**
 
-- **The whole genome.** These rates cover 12 well-studied genes. Run `varsight validate` after setup to measure your own data.
-- **The full setup.** The whole cycle passes against a local test server, but the full download has not been run end to end, so its time and disk figures are estimates.
+- **hg38 accuracy.** Measured on 12 well-studied genes only. Run `varsight validate` after setup to measure your own data.
+- **Every setup path.** hg19 has run from start to the self-test, natively on Windows. hg38, both builds together, and a full build inside WSL haven't.
+- **Current Pfam positions.** Domain positions come from Pfam 37.0, the newest release with a small human-only file, so 9.8% of today's protein and family pairs have none. [Details](docs/data-sources.md#core-databases).
 - **Licensed databases.** The COSMIC, OMIM, SpliceAI and PrimateAI readers follow each provider's documented columns, without a real file. A mismatch stops with a clear message.
 - **Microsoft Excel itself.** Workbooks were checked with a separate reader, not opened in Excel.
 - **Other Python versions.** Run on Python 3.14 so far. CI covers 3.10 to 3.14 on Linux, and 3.10 and 3.14 on Windows.

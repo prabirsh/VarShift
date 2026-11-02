@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
+
+from .errors import InputError
+
+_WINDOWS_PATH = re.compile(r"^([A-Za-z]):[\\/]*(.*)$")
 
 
 def _config_file() -> Path:
@@ -35,12 +40,24 @@ def default_data_dir() -> Path:
 def resolve_data_dir(explicit: str | None = None) -> Path:
     """The data= option, then $VARSIGHT_DATA, then the saved setting, then a default."""
     if explicit:
-        return Path(explicit).expanduser().resolve()
+        return _given_folder(explicit)
     env = os.environ.get("VARSIGHT_DATA")
     if env:
-        return Path(env).expanduser().resolve()
+        return _given_folder(env)
     saved = load_settings().get("data_dir")
     return Path(saved).expanduser() if saved else default_data_dir()
+
+
+def _given_folder(text: str) -> Path:
+    """On Linux, I:\\data would quietly become a new folder of that odd name in the current directory."""
+    windows = _WINDOWS_PATH.match(text) if os.name != "nt" else None
+    if windows:
+        drive, rest = windows.groups()
+        raise InputError(
+            f"{text} looks like a Windows folder, which only works in PowerShell or Command Prompt. "
+            f"In WSL, write it like /mnt/{drive.lower()}/{rest.replace(chr(92), '/')}"
+        )
+    return Path(text).expanduser().resolve()
 
 
 def is_windows_mount(path: Path) -> bool:

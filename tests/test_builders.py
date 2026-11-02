@@ -7,9 +7,10 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import write_fasta
-from varsight.errors import SetupError
+from varsight.errors import InputError, ReferenceMismatch, SetupError
 from varsight.genome import Genome
 from varsight.pipeline import builders
+from varsight.variant import normalize
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -179,6 +180,52 @@ class Genes(Folder):
             builders.build_genes({"hgnc": self.text("h.txt", "id\tname\nx\ty\n")}, self.root / "g.sqlite")
 
 
+class TemporaryFiles(Folder):
+    def test_a_build_sorts_beside_its_database_and_not_on_the_system_disk(self):
+        folder = self.root / "it's here"
+        folder.mkdir()
+        con = builders._new_db(folder / "x.sqlite", "CREATE TABLE t(a);")
+        self.addCleanup(con.close)
+        self.assertEqual(Path(con.execute("PRAGMA temp_store_directory").fetchone()[0]), folder.resolve())
+        # The setting belongs to the whole process, so don't leave it pointing at a folder about to be removed.
+        con.execute("PRAGMA temp_store_directory=''")
+        con.close()
+        builders._open_builds.clear()
+
+
+class ClinvarShortcut(Folder):
+    """One changed base skips normalize() during a build, so the two must always agree."""
+
+    SEQUENCE = "ACGTTGCAACGGTTAACCGGTATTTTTTGCA"
+
+    def setUp(self):
+        super().setUp()
+        self.genome = Genome("hg19", write_fasta(self.root, "g.fa", {"chr1": self.SEQUENCE}))
+        self.addCleanup(self.genome.close)
+
+    def test_every_single_base_change_agrees_with_normalize(self):
+        for pos, ref in enumerate(self.SEQUENCE, 1):
+            for alt in "ACGT".replace(ref, ""):
+                variant = normalize(self.genome, "chr1", pos, ref, alt)
+                self.assertEqual(builders._normalized_quickly(self.genome, "chr1", pos, ref, alt), (variant.pos, variant.ref, variant.alt))
+
+    def test_a_wrong_reference_base_is_still_refused(self):
+        with self.assertRaises(ReferenceMismatch):
+            builders._normalized_quickly(self.genome, "chr1", 1, "T", "G")
+
+    def test_a_position_past_the_end_is_still_refused(self):
+        with self.assertRaises(InputError):
+            builders._normalized_quickly(self.genome, "chr1", len(self.SEQUENCE) + 5, "A", "G")
+
+    def test_an_insertion_is_still_left_aligned(self):
+        self.assertEqual(builders._normalized_quickly(self.genome, "chr1", 28, "T", "TT"), (22, "A", "AT"))
+
+    def test_lower_case_and_ambiguous_alleles_take_the_full_route(self):
+        self.assertEqual(builders._normalized_quickly(self.genome, "chr1", 1, "a", "g"), (1, "A", "G"))
+        with self.assertRaises(InputError):
+            builders._normalized_quickly(self.genome, "chr1", 1, "A", "R")
+
+
 class Uniprot(unittest.TestCase):
     ENTRY = """ID   TEST_HUMAN              Reviewed;         10 AA.
 AC   P00001; Q00001;
@@ -206,6 +253,46 @@ SQ   SEQUENCE   3 AA;  1000 MW;  ABC CRC64;
         self.assertEqual((entry["accession"], entry["gene"], entry["sequence"]), ("P00001", "TEST", "MAEKLGWPAA"))
         self.assertEqual(entry["pfam"], [("PF00001", "7tm_1")])
         self.assertEqual(entry["features"], [["DOMAIN", 2, 8, "Kinase"], ["ACT_SITE", 5, 5, ""]])
+
+    # The first lines of Pfam's real human file, then a row in its format for each entry above.
+    PFAM_HEAD = (
+        "#Pfam-A regions from Pfam version 37.0 for ncbi taxid 9606 'Homo sapiens (Human)'\n"
+        "#Total number of proteins in proteome: 82677\n"
+        "#<seq id> <alignment start> <alignment end> <envelope start> <envelope end> <hmm acc> <hmm name> <type> "
+        "<hmm start> <hmm end> <hmm length> <bit score> <E-value> <clan>\n"
+    )
+    PFAM_ROWS = (
+        "P00001\t2\t8\t1\t9\tPF00001\t7tm_1\tFamily\t1\t7\t7\t10.0\t1e-05\tNo_clan\n"
+        "A00001\t1\t3\t1\t3\tPF00002\tOther\tDomain\t1\t3\t3\t10.0\t1e-05\tCL0001\n"
+    )
+
+    def build(self, pfam):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        uniprot = Path(folder.name) / "uniprot.dat"
+        uniprot.write_text(self.ENTRY, encoding="utf-8")
+        out = Path(folder.name) / "proteins.sqlite"
+        stats = builders.build_proteins(uniprot, pfam.splitlines(keepends=True), out)
+        con = sqlite3.connect(out)
+        self.addCleanup(con.close)
+        return stats, con.execute("SELECT * FROM pfam_regions").fetchall()
+
+    def test_pfam_rows_are_kept_for_reviewed_proteins_only(self):
+        stats, rows = self.build(self.PFAM_HEAD + self.PFAM_ROWS)
+        self.assertEqual(rows, [("P00001", "PF00001", "7tm_1", 2, 8)])
+        self.assertEqual(stats["pfam_regions"], 1)
+
+    def test_a_changed_pfam_header_stops_the_build(self):
+        with self.assertRaises(SetupError):
+            self.build(self.PFAM_HEAD.replace("<hmm acc>", "<family>") + self.PFAM_ROWS)
+
+    def test_a_pfam_file_with_no_header_stops_the_build(self):
+        with self.assertRaises(SetupError):
+            self.build(self.PFAM_ROWS)
+
+    def test_a_pfam_file_matching_no_protein_stops_the_build(self):
+        with self.assertRaises(SetupError):
+            self.build(self.PFAM_HEAD + "Q99999\t1\t3\t1\t3\tPF00002\tOther\tDomain\t1\t3\t3\t10.0\t1e-05\tCL0001\n")
 
 
 if __name__ == "__main__":

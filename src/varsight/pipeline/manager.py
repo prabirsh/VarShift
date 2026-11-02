@@ -11,7 +11,9 @@ import json
 import logging
 import os
 import shutil
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -26,7 +28,7 @@ from ..genome import Genome, open_build_genome
 from ..store import DB_DIR, GENOME_DIR, MANIFEST, SCHEMA_VERSION, DataStore
 from ..advanced import ACCEPT, ALIAS, OWN_FILE, artifact_names, get_database
 from . import advanced_builders, builders
-from .fetch import CHUNK, Fetcher, md5_from_list
+from .fetch import CHUNK, Fetcher, duration_label, md5_from_list
 
 log = logging.getLogger("varsight.data")
 
@@ -35,7 +37,7 @@ SNAPSHOT_DIR = "snapshots"
 DOWNLOAD_DIR = "downloads"
 STAGING_DIR = "staging"
 REPORT_DIR = "reports"
-CACHE_DIR = "cache"
+STILL_GOING_EVERY = 60
 KEEP_SNAPSHOTS = 2
 # A new database may not shrink past this share of the one it replaces.
 SHRINK_LIMIT = 0.9
@@ -156,7 +158,7 @@ class DataManager:
             self.data_dir.chmod(0o700)
         except OSError:
             pass
-        for name in (DB_DIR, GENOME_DIR, SCORE_DIR, SNAPSHOT_DIR, DOWNLOAD_DIR, STAGING_DIR, REPORT_DIR, CACHE_DIR):
+        for name in (DB_DIR, GENOME_DIR, SCORE_DIR, SNAPSHOT_DIR, DOWNLOAD_DIR, STAGING_DIR, REPORT_DIR):
             (self.data_dir / name).mkdir(exist_ok=True)
 
     # planning
@@ -225,8 +227,6 @@ class DataManager:
     def _build(self, name: str, options: dict) -> dict:
         """Download inputs and build into staging. Returns the record for the manifest."""
         artifact = self.catalog["artifacts"][name]
-        kind = artifact["kind"]
-        staging = self.data_dir / STAGING_DIR
         started = time.time()
         metas: dict[str, dict] = {}
         paths: dict[str, Path] = {}
@@ -236,6 +236,20 @@ class DataManager:
             paths[source_id], metas[source_id] = self._download(source_id)
 
         log.info("  building %s", name)
+        with _still_going(f"building {name}"):
+            files, stats = self._build_files(name, paths, metas, options)
+        return {
+            "name": name,
+            "files": files,
+            "stats": stats,
+            "metas": metas,
+            "seconds": round(time.time() - started, 1),
+        }
+
+    def _build_files(self, name: str, paths: dict, metas: dict, options: dict) -> tuple[list[Path], dict]:
+        artifact = self.catalog["artifacts"][name]
+        kind = artifact["kind"]
+        staging = self.data_dir / STAGING_DIR
         build = artifact.get("build")
         if kind == "genome":
             out = staging / f"{build}.fa"
@@ -270,7 +284,8 @@ class DataManager:
                     out,
                 )
             elif kind == "proteins":
-                stats, metas["pfam_regions"] = self._build_proteins(paths["uniprot"], out, options)
+                with builders.open_text(paths["pfam_regions"]) as pfam:
+                    stats = builders.build_proteins(paths["uniprot"], pfam, out)
             elif kind == "civic":
                 stats = builders.build_civic(paths["civic_variants"], paths["civic_evidence"], out)
             elif kind == "phylop":
@@ -280,44 +295,13 @@ class DataManager:
                 stats = {"bytes": out.stat().st_size}
             else:
                 stats = self._build_advanced(name, kind, build, out, paths, metas, options)
-        return {
-            "name": name,
-            "files": files,
-            "stats": stats,
-            "metas": metas,
-            "seconds": round(time.time() - started, 1),
-        }
+        return files, stats
 
     def _genome_for(self, build: str) -> Genome:
         fasta = self.data_dir / GENOME_DIR / f"{build}.fa"
         if not fasta.is_file():
             raise SetupError(f"the {build} reference must be installed first")
         return open_build_genome(self.data_dir / GENOME_DIR, build)
-
-    def _build_proteins(self, uniprot: Path, out: Path, options: dict):
-        source = self.catalog["sources"]["pfam_regions"]
-        cache = self.data_dir / CACHE_DIR / "pfam_regions.kept.tsv.gz"
-        cache_meta = self.data_dir / CACHE_DIR / "pfam_regions.kept.json"
-        if options.get("skip_pfam_regions"):
-            log.warning("  skipping Pfam regions as requested; domain positions will be missing")
-            return builders.build_proteins(uniprot, None, out), {"skipped": True}
-        remote = self.fetcher.head(source["url"])
-        if cache.is_file() and cache_meta.is_file():
-            meta = json.loads(cache_meta.read_text(encoding="utf-8"))
-            if (meta.get("etag"), meta.get("last_modified")) == (remote.etag, remote.last_modified):
-                log.info("  Pfam unchanged; using the rows kept from the last read")
-                with builders.open_text(cache) as handle:
-                    return builders.build_proteins(uniprot, handle, out), meta
-        log.info("  reading Pfam regions (%s) without saving the whole file", _size_label(remote.size))
-        stream = self.fetcher.stream(source["url"], source["max_mb"] * 1024 * 1024)
-        temp_cache = cache.with_name(cache.name + ".tmp")
-        with stream as raw, _gzip_text(raw) as lines:
-            stats = builders.build_proteins(uniprot, lines, out, temp_cache)
-        meta = stream.metadata()
-        meta["license"] = source.get("license", "")
-        os.replace(temp_cache, cache)
-        cache_meta.write_text(json.dumps(meta), encoding="utf-8")
-        return stats, meta
 
     def _build_advanced(self, name: str, kind: str, build: str | None, out: Path, paths: dict, metas: dict, options: dict) -> dict:
         own_file = Path(options["file"]) if options.get("file") else None
@@ -449,6 +433,7 @@ class DataManager:
             manifest["builds"] = sorted(set(manifest.get("builds", [])) | set(builds))
             self._save_manifest(manifest)
             plan = self._plan(sorted(set(manifest["builds"])))
+            began = time.monotonic()
             done = []
             for number, name in enumerate(plan, 1):
                 if name in manifest["files"] and not force and all(p.exists() for p in self._artifact_paths(name)):
@@ -457,10 +442,12 @@ class DataManager:
                 log.info("[%d/%d] %s", number, len(plan), name)
                 built = self._build(name, options)
                 self._publish(manifest, built, None)
+                log.info("  finished %s in %s", name, duration_label(built["seconds"]))
                 done.append({"artifact": name, "stats": built["stats"], "seconds": built["seconds"]})
                 self._cleanup_downloads(plan[number:])
             self._cleanup_downloads([])
             self._write_report("setup", {"builds": manifest["builds"], "installed": done})
+            log.info("Setup finished in %s", duration_label(time.monotonic() - began))
             return done
 
     # advanced databases
@@ -533,7 +520,7 @@ class DataManager:
             item = UpdateItem(name, artifact["policy"])
             for source_id in artifact["sources"]:
                 stored = entry.get("sources", {}).get(source_id)
-                if stored is None or stored.get("skipped") or self.catalog["sources"][source_id].get("url_template"):
+                if stored is None or self.catalog["sources"][source_id].get("url_template"):
                     continue
                 try:
                     url = self._source_url(source_id)
@@ -561,10 +548,6 @@ class DataManager:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             manifest = self.load_manifest()
             snapshot = self.data_dir / SNAPSHOT_DIR / stamp
-            proteins = manifest["files"].get("proteins", {}).get("sources", {})
-            if proteins.get("pfam_regions", {}).get("skipped"):
-                # Someone who chose to skip the 4.7 GB Pfam read at setup keeps that choice.
-                options = {**options, "skip_pfam_regions": True}
             order = {"genome": 0, "liftover": 1, "transcripts": 2, "clinvar": 3}
             for item in sorted(items, key=lambda i: order.get(self.catalog["artifacts"][i.artifact]["kind"], 9)):
                 if item.error:
@@ -712,6 +695,25 @@ def _build_of_file(options: dict, builds: list[str], database) -> str:
     if chosen not in builds:
         raise SetupError(f"{database.title} is for {chosen}, but only {', '.join(builds)} is set up here")
     return chosen
+
+
+@contextmanager
+def _still_going(what: str):
+    """Some builds run for minutes with nothing to report. A line each minute shows they haven't stopped."""
+    began = time.monotonic()
+    finished = threading.Event()
+
+    def speak():
+        while not finished.wait(STILL_GOING_EVERY):
+            log.info("    still %s, %s so far", what, duration_label(time.monotonic() - began))
+
+    speaker = threading.Thread(target=speak, daemon=True)
+    speaker.start()
+    try:
+        yield
+    finally:
+        finished.set()
+        speaker.join()
 
 
 def _older_than(stamp: str, days: int) -> bool:

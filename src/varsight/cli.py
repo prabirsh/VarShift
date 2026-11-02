@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import shutil
@@ -22,6 +23,10 @@ from .updates import check_in_background, clear_applied, notice_lines, read_stat
 from .vcf import looks_like_vcf
 
 log = logging.getLogger("varsight")
+_OUT_OF_MEMORY = (
+    "The system ran out of free memory. Close other large programs and run the same command again: finished steps are kept. "
+    "In WSL, this happens when reading a Windows drive under /mnt, so keep the data on the Linux disk, or use PowerShell."
+)
 _PARALLEL_FROM = 1024 * 1024
 
 
@@ -49,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        if exc.errno == errno.ENOMEM:
+            print(_OUT_OF_MEMORY, file=sys.stderr)
         return 1
 
 
@@ -159,9 +166,9 @@ def _finish_file(sink, counts) -> int:
 # setup
 _BUILD_CHOICES = {"1": "hg19", "2": "hg38", "3": "both", "hg19": "hg19", "hg38": "hg38", "both": "both"}
 _CORE_NEEDS = {
-    "hg19": ("about 2.3 GB, plus 4.7 GB of Pfam read without saving", "about 5 GB", "about 15 GB"),
-    "hg38": ("about 2.4 GB, plus 4.7 GB of Pfam read without saving", "about 5 GB", "about 15 GB"),
-    "both": ("about 3.3 GB, plus 4.7 GB of Pfam read without saving", "about 10 GB", "about 25 GB"),
+    "hg19": ("about 1.7 GB", "about 5 GB", "about 15 GB", "about 45 minutes"),
+    "hg38": ("about 1.9 GB", "about 5 GB", "about 15 GB", "about 45 minutes"),
+    "both": ("about 3.0 GB", "about 10 GB", "about 25 GB", "about 1.5 hours"),
 }
 
 
@@ -220,6 +227,12 @@ def _setup(values: Values) -> int:
     if data_text is None and interactive:
         data_text = _ask("\nWhere should the data go?", str(resolve_data_dir()))
     data_dir = resolve_data_dir(data_text)
+    if is_windows_mount(data_dir) and not values.has("windowsdrive"):
+        raise InputError(
+            f"{data_dir} is a Windows drive seen from WSL. Setup can stop there with 'Cannot allocate memory', and building "
+            f"measured about 30 times slower. Use a folder on the Linux disk, such as data={default_data_dir()}, or run setup "
+            "from PowerShell, after which WSL can read the same folder. To build here anyway, add the word windowsdrive"
+        )
     with_names = values.items("with")
     if interactive and not with_names:
         with_names = _ask_advanced()
@@ -236,15 +249,11 @@ def _setup(values: Values) -> int:
                 accepted.add(database.name)
             else:
                 raise InputError(f"{database.title} needs you to accept its terms; add accept={database.name} if they fit your use")
-    if is_windows_mount(data_dir):
-        log.warning(
-            "\nNote: %s is a Windows drive seen from WSL. Lookups measured about 50 to 65 times slower there than on the Linux disk.",
-            data_dir,
-        )
-    transfer, kept, free = _CORE_NEEDS[build]
+    transfer, kept, free, duration = _CORE_NEEDS[build]
     print(f"\nThis will install: {'hg19 and hg38' if build == 'both' else build} into {data_dir}")
     print(f"  Download   {transfer}")
-    print(f"  Disk       {kept} kept, and keep {free} free during setup (estimates)")
+    print(f"  Disk       {kept} kept, and keep {free} free during setup")
+    print(f"  Time       {duration} on a 2 MB/s connection. If it stops, run it again and it carries on")
     if with_names:
         print(f"  Advanced   {', '.join(with_names)}")
     if interactive and _ask("Start? yes or no:", "yes").lower() not in ("y", "yes"):
@@ -252,10 +261,11 @@ def _setup(values: Values) -> int:
         return 1
     builds = ["hg19", "hg38"] if build == "both" else [build]
     manager = DataManager(data_dir)
-    manager.setup(builds, {"skip_pfam_regions": values.has("nopfam")}, values.has("rebuild"))
+    # Saved first, so that running setup again after an interruption offers this same folder.
+    save_setting("data_dir", str(data_dir))
+    manager.setup(builds, {}, values.has("rebuild"))
     for name in with_names:
         manager.add(name, {"accepted": True})
-    save_setting("data_dir", str(data_dir))
     print(f"\nInstalled into {data_dir}. Checking it with known variants.", file=sys.stderr)
     values.options["data"] = str(data_dir)
     return _selftest(values)
@@ -494,7 +504,7 @@ def _config(values: Values) -> int:
             raise InputError("updates must be on or off")
         save_setting("updates", updates)
     if values.get("data"):
-        save_setting("data_dir", str(Path(values.get("data")).expanduser().resolve()))
+        save_setting("data_dir", str(resolve_data_dir(values.get("data"))))
     settings = load_settings()
     print(f"Data folder            {settings.get('data_dir', default_data_dir())}")
     print(f"Quick update check     {settings.get('updates', 'on')}")

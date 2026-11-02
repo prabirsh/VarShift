@@ -2,8 +2,7 @@
 """Rebuild demo/sources: real data, cut down to a few genes, in each source's own file format.
 
 Maintainers only. This reads from the same public sources as a real setup, with two exceptions that
-keep the transfer small: sequence windows come from the UCSC REST API, and Pfam positions from the
-InterPro API. Neither is ever used by VarSight itself.
+keep the transfer small: sequence windows come from the UCSC REST API, which VarSight itself never uses.
 
     python3 tools/build_demo_data.py out=demo/sources
     python3 tools/build_demo_data.py out=/tmp/validation genes=genes.txt cap=none
@@ -31,6 +30,7 @@ DEMO_GENES = ["BRAF", "KRAS", "NRAS", "EGFR", "TP53", "PIK3CA", "IDH1", "BRCA1",
 FLANK = 6000
 LINE = 60
 UA = {"User-Agent": "VarSight-demo-builder/0.1"}
+PFAM_HUMAN = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/proteomes/9606.tsv.gz"
 REFSEQ = {
     "hg19": "https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz",
     "hg38": "https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh38_latest/refseq_identifiers/GRCh38_latest_genomic.gff.gz",
@@ -403,21 +403,9 @@ def fetch_uniprot(accessions: list[str], out: Path) -> None:
 
 
 def fetch_pfam(accessions: list[str], out: Path) -> None:
-    lines = ["pfamseq_acc\tseq_version\tcrc64\tmd5\tpfamA_acc\tseq_start\tseq_end\tali_start\tali_end\n"]
-    for accession in accessions:
-        url = f"https://www.ebi.ac.uk/interpro/api/entry/pfam/protein/uniprot/{accession}/?format=json"
-        try:
-            data = json.loads(get(url, {"Accept": "application/json"}))
-        except (RuntimeError, ValueError):
-            continue
-        for entry in data.get("results", []):
-            pfam = entry["metadata"]["accession"].upper().replace("PFAM:", "")
-            for protein in entry.get("proteins", []):
-                for location in protein.get("entry_protein_locations", []):
-                    for fragment in location.get("fragments", []):
-                        lines.append(f"{accession}\t1\t-\t-\t{pfam}\t{fragment['start']}\t{fragment['end']}\t{fragment['start']}\t{fragment['end']}\n")
-        time.sleep(0.2)
-    write_gz(out, lines)
+    wanted = set(accessions)
+    text = gzip.decompress(get(PFAM_HUMAN)).decode("utf-8")
+    write_gz(out, [line for line in text.splitlines(True) if line.startswith("#") or line.split("\t", 1)[0] in wanted])
 
 
 def main() -> int:
