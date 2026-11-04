@@ -1,10 +1,10 @@
-# What people struggle with, and what VarSight does about it
+# What people struggle with, and what VarShift does about it
 
-This page records the research behind VarSight's design: what the published evidence says, which tools already exist, and why the reports look the way they do. It was done in November 2026. Other tools were not re-run for this page, so what it says about them comes from their papers and documentation.
+This page records the research behind VarShift's design: what the published evidence says, which tools already exist, and why the reports look the way they do. It was done in November 2026. Other tools were not re-run for this page, so what it says about them comes from their papers and documentation.
 
 ## The problems
 
-| Problem | What the evidence says | What VarSight does | Where it stops |
+| Problem | What the evidence says | What VarShift does | Where it stops |
 | - | - | - | - |
 | The same variant gets different names | 164,549 two-star ClinVar variants run through ANNOVAR, SnpEff and VEP: all three agreed on the HGVS c. name for only 58.52%, on the p. name for 84.04%, and on coding impact for 85.58% ([Human Genomics, 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/)). In one exercise, 20 laboratories described one variant 14 different ways (Deans et al., 2016, cited by [Yen et al., 2017](https://doi.org/10.1186/s13073-016-0396-7)) | Measures its own names against ClinVar's, shows ClinVar's names beside its own, and lists every candidate for a p. name | Agreement is measured on a 20,027-name hg19 sample so far, not yet on hg38 ([validation](validation.md)) |
 | Indels are where tools differ most | For SNVs, VEP and SnpEff matched ClinVar's syntax over 99.5% of the time. For other variant types it was under 90% (Yen et al., 2017) | Reports SNVs and indels separately, so an average can't hide this | |
@@ -16,7 +16,7 @@ This page records the research behind VarSight's design: what the published evid
 | Installing the tools | Common annotators need a language runtime plus a large per-build cache | Needs only Python and works on Ubuntu, WSL, PowerShell and Command Prompt | |
 | Not knowing the data is old | Local databases go stale quietly | Tells you when a newer version exists, without slowing the run | Depends on the source reporting a date or version |
 
-**A note on time saved.** Curation time is often quoted, but the evidence is thin. One clinical trial protocol says "hours of skilled person time per variant" ([NCT04196374](https://clinicaltrials.gov/study/NCT04196374)), and most other figures are vendor claims. VarSight therefore makes no claim about hours saved, and you can measure it on your own work.
+**A note on time saved.** Curation time is often quoted, but the evidence is thin. One clinical trial protocol says "hours of skilled person time per variant" ([NCT04196374](https://clinicaltrials.gov/study/NCT04196374)), and most other figures are vendor claims. VarShift therefore makes no claim about hours saved, and you can measure it on your own work.
 
 ## Other tools
 
@@ -32,7 +32,7 @@ Each of these is good at what it was built for. This table is about fit for one 
 | [PCGR](https://pmc.ncbi.nlm.nih.gov/articles/PMC5946881/) | Conda or Docker, with a large data bundle | Tumour VCF | Tiered interactive HTML | Built for cancer genomes |
 | Franklin, VarSome | Website | One variant, or uploads | Web pages | The variant goes to their servers, with interpretation support |
 
-**Where VarSight fits:** a person with a p. name, a c. name or a VCF, a laptop, and patient data that shouldn't leave it. It doesn't replace VEP for pipelines, or an interpretation platform for classification.
+**Where VarShift fits:** a person with a p. name, a c. name or a VCF, a laptop, and patient data that shouldn't leave it. It doesn't replace VEP for pipelines, or an interpretation platform for classification.
 
 ## How results should be shown
 
@@ -67,4 +67,4 @@ Readers need a starting point, but an automatic pathogenic or benign call would 
 - Score thresholds are the published calibrated ones: REVEL 0.644 ([Pejaver et al., 2022](https://doi.org/10.1016/j.ajhg.2022.10.013)) and SpliceAI 0.2 ([Walker et al., 2023](https://doi.org/10.1016/j.ajhg.2023.06.002)).
 - A variant reported as pathogenic stays High even if common. The common frequency is added to its reasons, so that conflict stays visible.
 
-The rule itself is about a hundred lines in [`priority.py`](../src/varsight/priority.py).
+The rule itself is about a hundred lines in [`priority.py`](../src/varshift/priority.py).

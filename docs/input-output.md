@@ -14,13 +14,13 @@
 
 Add `gene=BRAF` when a description has no gene.
 
-**Always put a variant in quotes.** A shell can read `>` as "write to a file", so type `varsight annotate "NM_004333.6:c.1799T>A"`. On Windows the installed `varsight.exe` keeps quoted text intact in both PowerShell and Command Prompt.
+**Always put a variant in quotes.** A shell can read `>` as "write to a file", so type `varshift annotate "NM_004333.6:c.1799T>A"`. On Windows the installed `varshift.exe` keeps quoted text intact in both PowerShell and Command Prompt.
 
 ## What happens with p. input
 
 - **Substitutions:** every codon giving that amino acid is tried, so `BRAF V600E` gives `c.1799T>A` and `c.1799_1800delinsAA`.
 - **In-frame deletions and duplications:** the codons named are removed or repeated.
-- **Frameshifts, insertions, extensions:** a protein name doesn't define one DNA change, so VarSight looks up ClinVar's names for that gene. If ClinVar has none, it says so and asks for the c. name.
+- **Frameshifts, insertions, extensions:** a protein name doesn't define one DNA change, so VarShift looks up ClinVar's names for that gene. If ClinVar has none, it says so and asks for the c. name.
 - **Wrong residue on the default transcript:** other transcripts of the gene are tried, and a match carries `other_transcript_used`.
 
 ## Transcripts shown
@@ -122,11 +122,11 @@ Priority sorts results so you know where to start. **It is not a classification,
 | Review | ClinVar says uncertain significance, or the change alters the protein or nearby splicing |
 | Low | ClinVar or ClinGen reports benign, frequency is at least 5% in a population database, or there is no protein change and no record of concern |
 
-High takes precedence. A variant reported as pathogenic stays High even when common, and the frequency is added to its reasons so the conflict stays visible. The rule is in [`priority.py`](../src/varsight/priority.py).
+High takes precedence. A variant reported as pathogenic stays High even when common, and the frequency is added to its reasons so the conflict stays visible. The rule is in [`priority.py`](../src/varshift/priority.py).
 
 ## Large VCFs
 
-For a VCF over 1 MB, VarSight uses up to 4 processes, each with its own read-only connections. The output is identical and in the same order as with one process, and a test checks this. Choose the number with `workers=`, for example `workers=1` to leave the computer free. Each process uses about 75 MB of memory, and writing all three reports for 30,000 records used about 500 MB more. On a very tight machine, `out=results.tsv` needs the least. [Measured figures](benchmarks.md).
+For a VCF over 1 MB, VarShift uses up to 4 processes, each with its own read-only connections. The output is identical and in the same order as with one process, and a test checks this. Choose the number with `workers=`, for example `workers=1` to leave the computer free. Each process uses about 75 MB of memory, and writing all three reports for 30,000 records used about 500 MB more. On a very tight machine, `out=results.tsv` needs the least. [Measured figures](benchmarks.md).
 
 ## Flags
 
@@ -150,7 +150,7 @@ For a VCF over 1 MB, VarSight uses up to 4 processes, each with its own read-onl
 | `liftover_strand_flipped` | The region is reversed on the other build | Informational; alleles are complemented |
 | `ref_mismatch_on_other_build` | The mapped position has a different reference base | The other build's key is empty |
 | `ref_alt_swapped_on_other_build` | The other build's reference is this variant's ALT | The "variant" may be the reference allele there |
-| `other_build_not_installed`, `liftover_data_not_installed` | Only one build is set up | Install both with `varsight setup build=both` |
+| `other_build_not_installed`, `liftover_data_not_installed` | Only one build is set up | Install both with `varshift setup build=both` |
 | `other_build_region_not_installed` | That region isn't in the installed reference | Only happens with the demo data |
 | `uniprot_numbering_differs` | The residue differs between the transcript's protein and UniProt, so domain positions aren't reported | Compare in UniProt |
 | `split_from_multiallelic` | This row is one ALT from a multi-allelic VCF line | Informational |

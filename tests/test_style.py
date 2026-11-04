@@ -18,7 +18,7 @@ def package_files():
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES or SKIP_FOLDERS & set(parts):
             continue
         # A VCF or a results folder in the working copy is usually someone's sample, not part of the package.
-        if any(part.endswith("_varsight") for part in parts) or (path.suffix.lower() == ".vcf" and parts != ("demo", "demo.hg19.vcf")):
+        if any(part.endswith("_varshift") for part in parts) or (path.suffix.lower() == ".vcf" and parts != ("demo", "demo.hg19.vcf")):
             continue
         yield path
 

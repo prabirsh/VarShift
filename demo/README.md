@@ -1,9 +1,9 @@
 # Demo
 
-Run VarSight end to end with no download:
+Run VarShift end to end with no download:
 
 ```bash
-varsight demo
+varshift demo
 ```
 
 It builds a small data set from `sources/`, using exactly the same code as a real setup, then annotates:
@@ -33,7 +33,7 @@ Real public data, cut down to 12 genes: BRAF, KRAS, NRAS, EGFR, TP53, PIK3CA, ID
 
 **Nothing here comes from a patient.** The depth and genotype values in the demo VCF are invented.
 
-**This data is only for trying VarSight out.** Most of the genome is missing, so a variant elsewhere reports `not covered by the installed reference`, and ClinVar is deliberately incomplete. A real `not in ClinVar` result needs the full data.
+**This data is only for trying VarShift out.** Most of the genome is missing, so a variant elsewhere reports `not covered by the installed reference`, and ClinVar is deliberately incomplete. A real `not in ClinVar` result needs the full data.
 
 ## Licences
 

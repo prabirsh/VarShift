@@ -12,16 +12,16 @@ import zipfile
 from pathlib import Path
 
 from tests.helpers import tiny_bigwig
-from varsight.advanced import ALIAS, DATABASES, OWN_FILE, artifact_names, flatten_advanced, get_database, output_columns
-from varsight.annotate import Annotator
-from varsight.bigwig import BigWig
-from varsight.errors import DataError, SetupError
-from varsight.explain import run_explain
-from varsight.genome import open_build_genome
-from varsight.pipeline import advanced_builders as builders
-from varsight.pipeline.benchmark import run_benchmark
-from varsight.pipeline.demo import build_demo_store
-from varsight.store import DB_DIR, GENOME_DIR, DataStore
+from varshift.advanced import ALIAS, DATABASES, OWN_FILE, artifact_names, flatten_advanced, get_database, output_columns
+from varshift.annotate import Annotator
+from varshift.bigwig import BigWig
+from varshift.errors import DataError, SetupError
+from varshift.explain import run_explain
+from varshift.genome import open_build_genome
+from varshift.pipeline import advanced_builders as builders
+from varshift.pipeline.benchmark import run_benchmark
+from varshift.pipeline.demo import build_demo_store
+from varshift.store import DB_DIR, GENOME_DIR, DataStore
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -323,7 +323,7 @@ class Catalog(unittest.TestCase):
         self.assertEqual(artifact_names(DATABASES["omim"], ["hg19", "hg38"]), ["omim"])
 
     def test_every_artifact_is_in_the_download_catalog(self):
-        from varsight.pipeline.manager import load_catalog
+        from varshift.pipeline.manager import load_catalog
 
         catalog = load_catalog()
         for database in DATABASES.values():
@@ -416,7 +416,7 @@ class InTheResults(unittest.TestCase):
         self.assertEqual(self.store.advanced_hotspots("NRAS", 62), [])
 
     def test_the_card_shows_advanced_values(self):
-        from varsight.output import render_card
+        from varshift.output import render_card
 
         self.assertIn("gnomad_popmax", render_card(self.record))
 

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src" / "varsight"
+SRC = ROOT / "src" / "varshift"
 DOCS = sorted(list(ROOT.glob("*.md")) + list((ROOT / "docs").glob("*.md")) + list((ROOT / "demo").glob("*.md")))
 _LINK_RE = re.compile(r"\]\(([^)#\s]+)(#[^)\s]*)?\)")
 _HEADING_RE = re.compile(r"^#{1,6} (.+)$", re.MULTILINE)
@@ -54,15 +54,15 @@ class Links(unittest.TestCase):
 
 class Commands(unittest.TestCase):
     def test_commands_in_the_docs_are_really_accepted(self):
-        """Every line starting with varsight must parse, so the docs can't drift from the code."""
-        from varsight.commandline import parse
-        from varsight.errors import InputError
+        """Every line starting with varshift must parse, so the docs can't drift from the code."""
+        from varshift.commandline import parse
+        from varshift.errors import InputError
 
         checked = 0
         for doc in DOCS:
             for line in doc.read_text(encoding="utf-8").splitlines():
                 command = line.strip()
-                if not re.match(r"^varsight [a-z]+", command):
+                if not re.match(r"^varshift [a-z]+", command):
                     continue
                 command = command.split("  #")[0].strip()
                 command = re.sub(r"\s{2,}\S.*$", "", command)
@@ -75,7 +75,7 @@ class Commands(unittest.TestCase):
         self.assertGreater(checked, 20)
 
     def test_every_warning_has_plain_help(self):
-        from varsight.flags import FLAG_HELP
+        from varshift.flags import FLAG_HELP
 
         documented = (ROOT / "docs" / "input-output.md").read_text(encoding="utf-8")
         for flag, (meaning, action) in FLAG_HELP.items():
@@ -88,7 +88,7 @@ class Commands(unittest.TestCase):
             self.assertIn(name, readme)
 
     def test_demo_inputs_are_all_understood(self):
-        from varsight.inputs import parse_input
+        from varshift.inputs import parse_input
 
         for line in (ROOT / "demo" / "variants.txt").read_text(encoding="utf-8").splitlines():
             if line.strip() and not line.startswith("#"):
@@ -97,7 +97,7 @@ class Commands(unittest.TestCase):
 
 class Version(unittest.TestCase):
     def test_version_is_the_same_everywhere(self):
-        from varsight import __version__
+        from varshift import __version__
 
         self.assertIn(f"version: {__version__}", (ROOT / "CITATION.cff").read_text(encoding="utf-8"))
         self.assertIn(f"[{__version__}]", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))

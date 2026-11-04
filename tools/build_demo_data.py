@@ -2,7 +2,7 @@
 """Rebuild demo/sources: real data, cut down to a few genes, in each source's own file format.
 
 Maintainers only. This reads from the same public sources as a real setup, with two exceptions that
-keep the transfer small: sequence windows come from the UCSC REST API, which VarSight itself never uses.
+keep the transfer small: sequence windows come from the UCSC REST API, which VarShift itself never uses.
 
     python3 tools/build_demo_data.py out=demo/sources
     python3 tools/build_demo_data.py out=/tmp/validation genes=genes.txt cap=none
@@ -29,7 +29,7 @@ from pathlib import Path
 DEMO_GENES = ["BRAF", "KRAS", "NRAS", "EGFR", "TP53", "PIK3CA", "IDH1", "BRCA1", "BRCA2", "JAK2", "KIT", "PTEN"]
 FLANK = 6000
 LINE = 60
-UA = {"User-Agent": "VarSight-demo-builder/0.1"}
+UA = {"User-Agent": "VarShift-demo-builder/0.1"}
 PFAM_HUMAN = "https://ftp.ebi.ac.uk/pub/databases/Pfam/releases/Pfam37.0/proteomes/9606.tsv.gz"
 REFSEQ = {
     "hg19": "https://ftp.ncbi.nlm.nih.gov/refseq/H_sapiens/annotation/GRCh37_latest/refseq_identifiers/GRCh37_latest_genomic.gff.gz",
@@ -388,7 +388,7 @@ def filter_civic(genes: set[str], variants_out: Path, evidence_out: Path) -> Non
     for line in evidence[1:]:
         fields = line.split("\t")
         if len(fields) > at and fields[at] in profiles:
-            # Keep only the columns VarSight reads; the free text is not needed for a demo.
+            # Keep only the columns VarShift reads; the free text is not needed for a demo.
             fields[header.index("evidence_statement")] = ""
             kept.append("\t".join(fields) + "\n")
     write_gz(evidence_out, kept)

@@ -1,6 +1,6 @@
 # Benchmarks and system requirements
 
-Run `varsight benchmark` to measure your own computer. All VarSight figures below come from one laptop: Intel i3-7020U (2 cores, 4 threads, 2.3 GHz), 3.9 GB of memory, SSD. WSL had 1.8 GB of that memory. The test VCFs hold public ClinVar records from the 12 demo genes, on the demo data.
+Run `varshift benchmark` to measure your own computer. All VarShift figures below come from one laptop: Intel i3-7020U (2 cores, 4 threads, 2.3 GHz), 3.9 GB of memory, SSD. WSL had 1.8 GB of that memory. The test VCFs hold public ClinVar records from the 12 demo genes, on the demo data.
 
 **These are gene-dense records on small databases.** Full databases and the first run after a reboot will be slower, and records outside genes should be faster. Neither has been measured yet.
 
@@ -30,7 +30,7 @@ The last row is what you get by default, since a VCF over 1 MB uses up to 4 proc
 | All three reports, 1 process | 276.3 s | Not measured | 472 MB |
 | **All three reports, 4 processes** | **169.8 s** | **126.9 s** | 532 MB on WSL, 484 MB on Windows, main process |
 
-This laptop has 2 physical cores, so 4 processes gave about 1.9 times the speed for TSV. Each worker also uses about 75 MB. On a small file, starting the processes uses up the gain, so VarSight uses one process under 1 MB.
+This laptop has 2 physical cores, so 4 processes gave about 1.9 times the speed for TSV. Each worker also uses about 75 MB. On a small file, starting the processes uses up the gain, so VarShift uses one process under 1 MB.
 
 The reports for those 30,000 records came to 35.8 MB for `report.html`, 12 to 13 MB for `results.xlsx` and 51.9 MB for `results.tsv`.
 
@@ -45,10 +45,10 @@ These come from other people's papers, on other data and hardware. **They are no
 | ANNOVAR | 75.3% | 98.1% | 164,549 two-star ClinVar variants, [Human Genomics 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/) |
 | SnpEff | 98.8% | 98.6% | Same |
 | VEP | 97.7% | 99.1% | Same |
-| VarSight, SNVs | 99.94% | 99.81% | 20,027 names across hg19, [validation](validation.md) |
-| VarSight, indels | 98.80% | 96.79% | Same |
+| VarShift, SNVs | 99.94% | 99.81% | 20,027 names across hg19, [validation](validation.md) |
+| VarShift, indels | 98.80% | 96.79% | Same |
 
-VarSight's sample is much smaller than the study's, covers hg19 only and has no review-star filter, so these figures aren't directly comparable. Run `varsight validate` to measure your own.
+VarShift's sample is much smaller than the study's, covers hg19 only and has no review-star filter, so these figures aren't directly comparable. Run `varshift validate` to measure your own.
 
 ### Time for a 30x genome on one core
 
@@ -59,7 +59,7 @@ VarSight's sample is much smaller than the study's, covers hg19 only and has no 
 | ANNOVAR | 67 min | Same |
 | VEP | 18 h | Same |
 
-VarSight is a Python program and isn't built to win this. At the TSV rates above with 4 processes, about 5 million records would take around 3 to 4 hours on this laptop, if every record were as slow as these gene-dense ones. Its strengths are single variants and exome-sized files on an ordinary laptop.
+VarShift is a Python program and isn't built to win this. At the TSV rates above with 4 processes, about 5 million records would take around 3 to 4 hours on this laptop, if every record were as slow as these gene-dense ones. Its strengths are single variants and exome-sized files on an ordinary laptop.
 
 ## Setup time
 
@@ -85,7 +85,7 @@ It works, and setting up from PowerShell and then reading the same folder from W
 | First read of a place in the reference | 0.45 ms | 7 ms, or 54 ms with WSL's memory nearly full |
 | The same place again | | 0.007 ms |
 | Building one test index of 600,000 rows | 2.4 s | 65 to 96 s |
-| One `varsight annotate` command, start to finish | | About 2 s, mostly loading the code through the same link |
+| One `varshift annotate` command, start to finish | | About 2 s, mostly loading the code through the same link |
 | Copying the 3.2 GB reference into WSL | | 13 min |
 
 ## System requirements

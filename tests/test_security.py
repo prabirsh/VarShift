@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "varsight"
+SRC = Path(__file__).resolve().parents[1] / "src" / "varshift"
 NETWORK_MODULES = {"socket", "ssl", "http", "urllib.request", "urllib.error", "ftplib", "smtplib", "requests", "httpx"}
 FORBIDDEN_MODULES = {"pickle", "marshal", "shelve", "telnetlib", "dill"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__"}
@@ -68,7 +68,7 @@ class SourceRules(unittest.TestCase):
     def test_the_update_check_cannot_carry_variants(self):
         """It is started with fixed arguments: the interpreter, the module and the data folder."""
         text = (SRC / "updates.py").read_text(encoding="utf-8")
-        self.assertIn('[sys.executable, "-m", "varsight.pipeline.updatecheck", str(data_dir)]', text)
+        self.assertIn('[sys.executable, "-m", "varshift.pipeline.updatecheck", str(data_dir)]', text)
         check = (SRC / "pipeline" / "updatecheck.py").read_text(encoding="utf-8")
         for word in ("variant", "vcf", "annotate"):
             self.assertNotIn(word, check.lower())
@@ -86,7 +86,7 @@ class SourceRules(unittest.TestCase):
                     self.assertNotIn(node.attr, {"system", "popen", "spawnl", "startfile"}, f"{path.name}:{node.lineno}")
 
     def test_no_third_party_runtime_imports(self):
-        allowed = set(__import__("sys").stdlib_module_names) | {"varsight"}
+        allowed = set(__import__("sys").stdlib_module_names) | {"varshift"}
         for path, tree in sources():
             for name in imports_of(tree):
                 root = name.split(".")[0]

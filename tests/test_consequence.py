@@ -4,10 +4,10 @@ import unittest
 from dataclasses import replace
 
 from tests.helpers import ToyGene
-from varsight.consequence import annotate
-from varsight.hgvs import parse_dna_change
-from varsight.resolver import _apply_on_transcript
-from varsight.variant import Variant
+from varshift.consequence import annotate
+from varshift.hgvs import parse_dna_change
+from varshift.resolver import _apply_on_transcript
+from varshift.variant import Variant
 
 # Input c. change, expected c. name after normalising, expected p. name, expected top effect.
 CASES = [

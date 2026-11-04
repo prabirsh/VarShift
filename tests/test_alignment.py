@@ -9,15 +9,15 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import write_fasta
-from varsight.consequence import annotate
-from varsight.errors import ResolveError, SetupError
-from varsight.genome import Genome
-from varsight.hgvs import parse_dna_change
-from varsight.pipeline import builders
-from varsight.resolver import _apply_on_transcript
-from varsight.sequence import reverse_complement
-from varsight.transcripts import Transcript, TxPosition
-from varsight.variant import Variant
+from varshift.consequence import annotate
+from varshift.errors import ResolveError, SetupError
+from varshift.genome import Genome
+from varshift.hgvs import parse_dna_change
+from varshift.pipeline import builders
+from varshift.resolver import _apply_on_transcript
+from varshift.sequence import reverse_complement
+from varshift.transcripts import Transcript, TxPosition
+from varshift.variant import Variant
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 FLANK = "CCCCCCCCCC"

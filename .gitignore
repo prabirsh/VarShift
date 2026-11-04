@@ -7,9 +7,9 @@ dist/
 .venv/
 
 # Local data and results. Patient VCFs and results must never be committed.
-varsight-data/
+varshift-data/
 demo_output/
-*_varsight/
+*_varshift/
 *.incomplete
 *.vcf
 *.vcf.gz

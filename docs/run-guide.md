@@ -1,6 +1,6 @@
-# Running VarSight on Ubuntu, WSL and Windows
+# Running VarShift on Ubuntu, WSL and Windows
 
-VarSight runs the same way on all of these. Only the install step differs. Pick your system in step 1, and the rest of the guide is the same, apart from the notes marked for Windows.
+VarShift runs the same way on all of these. Only the install step differs. Pick your system in step 1, and the rest of the guide is the same, apart from the notes marked for Windows.
 
 ## 1. Install
 
@@ -23,8 +23,8 @@ sudo apt update && sudo apt install -y python3
 Then get the code and install. In WSL, keep the code in your Linux home folder rather than under `/mnt/`, because it starts faster there:
 
 ```bash
-git clone https://github.com/prabirsh/VarSight.git ~/VarSight
-cd ~/VarSight
+git clone https://github.com/prabirsh/VarShift.git ~/VarShift
+cd ~/VarShift
 sh install.sh
 ```
 
@@ -32,7 +32,7 @@ If it tells you to add the command to your PATH, run the line it prints.
 
 ### Windows PowerShell
 
-Install Python from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**. Then download the repository as a ZIP from GitHub and unpack it, or use `git clone`. In PowerShell, from the VarSight folder:
+Install Python from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**, or in PowerShell run `winget install Python.Python.3.12` and open a new window. Then download the repository as a ZIP from GitHub and unpack it, or use `git clone`. In PowerShell, from the VarShift folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -40,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 ### Windows Command Prompt
 
-The same Python, then from the VarSight folder:
+The same Python, then from the VarShift folder:
 
 ```text
 install.bat
@@ -50,11 +50,11 @@ On Windows it asks before adding the command to your PATH. **Open a new window a
 
 ### What the install does
 
-It writes one small `varsight` launcher, runs the [demo](../demo/README.md) with no download, and offers to set up the databases. Check it:
+It writes one small `varshift` launcher, runs the [demo](../demo/README.md) with no download, and offers to set up the databases. Check it:
 
 ```bash
-varsight version
-varsight doctor
+varshift version
+varshift doctor
 ```
 
 Open `demo_output/variants/report.html` in a browser to see what a report looks like. It uses real data for 12 genes.
@@ -65,10 +65,32 @@ Open `demo_output/variants/report.html` in a browser to see what a report looks 
 | Ubuntu desktop | `xdg-open demo_output/variants/report.html` |
 | Windows | Double-click it, or `start demo_output\variants\report.html` |
 
+### Installer options
+
+Both installers take the same choices. Running one again is safe: it rewrites the launcher.
+
+| To | Ubuntu or WSL (`sh install.sh ...`) | Windows (`install.ps1 ...`) |
+| - | - | - |
+| Put the command in another folder | `bin=DIR` (default `~/.local/bin`) | `-BinDir DIR` (default `%LOCALAPPDATA%\VarShift\bin`) |
+| Skip the demo | `demo=no` | `-NoDemo` |
+| Not offer setup at the end | `setup=no` | `-NoSetup` |
+| Leave PATH alone | It never changes PATH; it prints the line to add | `-NoPath` |
+| Run the unit tests too | `test=yes` | `-Test` |
+
+`install.bat` passes the same `-` options on to `install.ps1`. For example, to keep everything inside one project folder and add nothing to PATH:
+
+```bash
+sh install.sh bin=/mnt/p/Projects/VarShift-bin demo=no setup=no
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -BinDir P:\Projects\bin -NoPath -NoSetup
+```
+
 ## 2. Set up the databases
 
 ```bash
-varsight setup
+varshift setup
 ```
 
 It asks three things, shows the size, and then waits for your yes before downloading:
@@ -80,14 +102,14 @@ Which genome build do you work with?
   3  Both. Results then always show the position on both builds
 Your choice, 1, 2 or 3: [3]
 
-Where should the data go? [/home/you/varsight-data]
+Where should the data go? [/home/you/varshift-data]
 
 Advanced databases are optional, and can be added any time later.
    1  dbSNP                              26 GB per build, read without saving
    ...
 Numbers to add now, separated by commas, or press Enter for none:
 
-This will install: hg19 into /home/you/varsight-data
+This will install: hg19 into /home/you/varshift-data
   Download   about 1.7 GB
   Disk       about 5 GB kept, and keep about 15 GB free during setup
   Time       about 45 minutes on a 2 MB/s connection. If it stops, run it again and it carries on
@@ -97,28 +119,28 @@ Start? yes or no: [yes]
 The same thing without questions, for scripts:
 
 ```bash
-varsight setup build=hg38 data=/data/varsight yes
+varshift setup build=hg38 data=/data/varshift yes
 ```
 
 **Where to put the data:**
 
 | System | Use | Why |
 | - | - | - |
-| WSL | `~/varsight-data`, on the Linux disk | Lookups measured 27 microseconds there, against 1.3 to 1.8 ms on a Windows drive seen from WSL (`/mnt/c`, `/mnt/i`) |
+| WSL | `~/varshift-data`, on the Linux disk | Lookups measured 27 microseconds there, against 1.3 to 1.8 ms on a Windows drive seen from WSL (`/mnt/c`, `/mnt/i`) |
 | Ubuntu | Any local disk | |
 | Windows | Any local NTFS folder under your user profile | Your profile is private to you by default |
 
-**If your Linux disk has no room, keep the data on a Windows drive, but build it from PowerShell.** Building from WSL on a Windows drive is about 30 times slower and, with WSL's memory tight, can stop with `Cannot allocate memory`, so setup refuses it unless you add the word `windowsdrive`. WSL's Linux disk is a file on C:, so `~/varsight-data` uses C: too. Set up once in PowerShell, then point WSL at the same files:
+**If your Linux disk has no room, keep the data on a Windows drive, but build it from PowerShell.** Building from WSL on a Windows drive is about 30 times slower and, with WSL's memory tight, can stop with `Cannot allocate memory`, so `setup`, `update` and `add` refuse it unless you add the word `windowsdrive`. WSL's Linux disk is a file on C:, so `~/varshift-data` uses C: too. Set up and update in PowerShell, then point WSL at the same files:
 
 ```powershell
-varsight setup build=hg19 data=I:\VIP-Annotations yes
+varshift setup build=hg19 data=I:\VIP-Annotations yes
 ```
 
 ```bash
-varsight config data=/mnt/i/VIP-Annotations
+varshift config data=/mnt/i/VIP-Annotations
 ```
 
-Each `varsight` command then takes about 2 seconds in WSL. See [the measurements](benchmarks.md#data-on-a-windows-drive-used-from-wsl). WSL refuses the Windows spelling `I:\VIP-Annotations`, because bash would remove the backslash.
+Each `varshift` command then takes about 2 seconds in WSL. See [the measurements](benchmarks.md#data-on-a-windows-drive-used-from-wsl). `varshift update check` works from WSL, as it changes nothing. WSL refuses the Windows spelling `I:\VIP-Annotations`, because bash would remove the backslash.
 
 **Time:** about 45 minutes for one build on a 2-core laptop with a 2 MB/s connection, and an estimated 1.5 hours for both. See [the time for each step](benchmarks.md#setup-time). Plug the laptop in and keep it awake.
 
@@ -142,25 +164,25 @@ At the end it runs the known-variant self-test. You want all of them to pass: `5
 ## 3. Annotate
 
 ```bash
-varsight annotate "BRAF V600E" build=hg19
-varsight annotate "NM_004333.6:c.1799T>A" build=hg38
-varsight annotate "chr7:g.140453136A>T" build=hg19
-varsight annotate variants.txt build=hg19
-varsight annotate sample.vcf.gz
+varshift annotate "BRAF V600E" build=hg19
+varshift annotate "NM_004333.6:c.1799T>A" build=hg38
+varshift annotate "chr7:g.140453136A>T" build=hg19
+varshift annotate variants.txt build=hg19
+varshift annotate sample.vcf.gz
 ```
 
-A VCF's build is read from its header. Results go in a folder named after the input, `sample_varsight/`, holding `report.html`, `results.xlsx` and `results.tsv`.
+A VCF's build is read from its header. Results go in a folder named after the input, `sample_varshift/`, in the current directory, holding `report.html`, `results.xlsx` and `results.tsv`. To put them somewhere else, add `out=FOLDER`, or `out=FILE.xlsx` for one file.
 
 **Always put a variant in quotes,** because of the `>`.
 
 Paths work as usual on each system:
 
 ```bash
-varsight annotate /mnt/i/runs/SAMPLE.hard-filtered.vcf.gz out=/home/you/results/SAMPLE
+varshift annotate /mnt/i/runs/SAMPLE.hard-filtered.vcf.gz out=/home/you/results/SAMPLE
 ```
 
 ```powershell
-varsight annotate "I:\runs\SAMPLE.hard-filtered.vcf.gz" "out=C:\Users\you\results\SAMPLE"
+varshift annotate "I:\runs\SAMPLE.hard-filtered.vcf.gz" "out=C:\Users\you\results\SAMPLE"
 ```
 
 Keep results with patient data on a private disk: see [SECURITY.md](../SECURITY.md).
@@ -168,7 +190,7 @@ Keep results with patient data on a private disk: see [SECURITY.md](../SECURITY.
 ## 4. See how it decided
 
 ```bash
-varsight explain "BRAF V600E" build=hg19
+varshift explain "BRAF V600E" build=hg19
 ```
 
 This prints every step, file and query. [How lookups work](how-lookups-work.md) explains the output.
@@ -176,24 +198,24 @@ This prints every step, file and query. [How lookups work](how-lookups-work.md) 
 ## 5. Add advanced databases
 
 ```bash
-varsight databases
-varsight add hotspots
-varsight add dbsnp
-varsight add revel accept
-varsight add cosmic_census file=Cosmic_CancerGeneCensus_v101_GRCh38.tsv.gz accept
-varsight remove dbsnp
+varshift databases
+varshift add hotspots
+varshift add dbsnp
+varshift add revel accept
+varshift add cosmic_census file=Cosmic_CancerGeneCensus_v101_GRCh38.tsv.gz accept
+varshift remove dbsnp
 ```
 
-`varsight databases` lists each one with its size, its licence, what is installed, and how to get it. The next report gains columns only for what you added. See [data sources](data-sources.md#advanced-databases).
+`varshift databases` lists each one with its size, its licence, what is installed, and how to get it. The next report gains columns only for what you added. See [data sources](data-sources.md#advanced-databases).
 
 ## 6. Stay up to date
 
 A notice appears by itself when a newer version of a database exists, and it doesn't slow the run. When you see it:
 
 ```bash
-varsight update check
-varsight update
-varsight rollback
+varshift update check
+varshift update
+varshift rollback
 ```
 
 To automate it, see [updates.md](updates.md).
@@ -203,8 +225,8 @@ To automate it, see [updates.md](updates.md).
 These two give you the proof for your own installation:
 
 ```bash
-varsight validate sample=20000 report=varsight-validation.md
-varsight benchmark report=varsight-benchmark.md
+varshift validate sample=20000 report=varshift-validation.md
+varshift benchmark report=varshift-benchmark.md
 ```
 
 - `validate` tests 20,000 ClinVar names per build across the whole genome, and lists every mismatch group.
@@ -220,7 +242,7 @@ It stays on your computer, but treat its output as private.
 
 ## 8. Send your changes to GitHub
 
-The repository is at [github.com/prabirsh/VarSight](https://github.com/prabirsh/VarSight). To publish changes, from Ubuntu or WSL:
+The repository is at [github.com/prabirsh/VarShift](https://github.com/prabirsh/VarShift). To publish changes, from Ubuntu or WSL:
 
 ```bash
 git add -A
@@ -237,15 +259,16 @@ On GitHub, go to **Settings**, then **Code security**, and turn on **Private vul
 
 | Message | What to do |
 | - | - |
-| `varsight: command not found` | Linux: run the PATH line that `install.sh` printed, or use `~/.local/bin/varsight`. Windows: open a new window |
+| `varshift: command not found` | Linux: run the PATH line that `install.sh` printed, or use `~/.local/bin/varshift` (or your `bin=` folder). Windows: open a new window |
 | `running scripts is disabled` on Windows | Use the exact command in step 1, with `-ExecutionPolicy Bypass`. It applies to that one run only |
-| `Python was not found` on Windows | That's the Microsoft Store placeholder. Install Python from python.org and tick Add python.exe to PATH |
-| `no VarSight data in ...` | Run `varsight setup`, or add `data=FOLDER` |
+| `Python was not found` on Windows | That's the Microsoft Store placeholder. Install Python from python.org and tick Add python.exe to PATH, or run `winget install Python.Python.3.12`, then open a new window |
+| `... is a Windows drive seen from WSL` | Run that `setup`, `update` or `add` from PowerShell, with the folder's Windows path. WSL then reads the same folder. `varshift update check` works in WSL |
+| `no VarShift data in ...` | Run `varshift setup`, or add `data=FOLDER` |
 | `not enough disk space` | Free up space, or choose another folder with `data=`. In WSL a folder under `/mnt/` works but is slower |
 | `another setup or update is running` | Wait for it. If nothing is running, run the command again: a leftover lock from a stopped run clears itself |
 | `REF ... does not match` | Usually the wrong build. Check `build=` |
 | `build= says hg38, but the contig lengths ... are hg19` | Your VCF is on the other build |
-| Very slow lookups | In WSL, check that the data isn't under `/mnt/`. `varsight doctor` warns about it |
+| Very slow lookups | In WSL, check that the data isn't under `/mnt/`. `varshift doctor` warns about it |
 | Out of disk on C: after removing data in WSL | WSL's virtual disk doesn't shrink on its own. Search for "compact WSL vhdx" |
 | `expected columns are missing` | A source changed its format. Nothing was installed and your current data is safe. Please report it |
 | Git says `dubious ownership` | Run the `git config` command that the message gives |

@@ -5,18 +5,56 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import CONTIG, FORWARD, ToyGene, write_fasta
-from varsight.builds import (
+from varshift.batch import _vcf_build
+from varshift.builds import (
     canonical_contig,
     contig_accession,
     detect_build_from_lengths,
     key_contig,
     parse_build,
 )
-from varsight.errors import DataError, InputError, ReferenceMismatch, ResolveError
-from varsight.genome import Genome, write_fai
-from varsight.store import bins_for_range, decode_exons, encode_exons, ucsc_bin
-from varsight.transcripts import TxPosition
-from varsight.variant import Variant, normalize
+from varshift.errors import DataError, InputError, ReferenceMismatch, ResolveError
+from varshift.genome import Genome, write_fai
+from varshift.store import DataStore, bins_for_range, decode_exons, encode_exons, ucsc_bin
+from varshift.transcripts import TxPosition
+from varshift.variant import Variant, normalize
+from varshift.vcf import VcfReader
+
+
+class VcfBuild(unittest.TestCase):
+    def _reader(self, header: str):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "s.vcf"
+        path.write_text(header + "#CHROM\tPOS\tID\tREF\tALT\n", encoding="utf-8")
+        reader = VcfReader(path)
+        self.addCleanup(reader.close)
+        return reader
+
+    def test_build_contradicting_the_reference_line_stops(self):
+        reader = self._reader("##fileformat=VCFv4.2\n##reference=GRCh38\n")
+        with self.assertRaises(InputError):
+            _vcf_build(reader, "hg19")
+        self.assertEqual(_vcf_build(reader, "hg38"), "hg38")
+        self.assertEqual(_vcf_build(reader, None), "hg38")
+
+
+class TranscriptCache(unittest.TestCase):
+    def test_one_accession_at_two_places_on_a_chromosome_stays_two_transcripts(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        (Path(folder.name) / "manifest.json").write_text('{"schema": 1, "builds": ["hg19"], "files": {}}', encoding="utf-8")
+        store = DataStore(Path(folder.name))
+        self.addCleanup(store.close)
+        row = {
+            "accession": "NM_000001.1", "gene": "G", "contig": "chr1", "strand": 1, "exons": "100-200",
+            "cds_start": None, "cds_end": None, "biotype": "mRNA", "protein": "", "source": "RefSeq", "gene_id": "",
+            "hgnc_id": "", "mane": "", "mane_accession": "", "refseq_select": 0, "genome_note": "",
+            "translation_exception": 0, "alignment": "", "tx_low": 100,
+        }  # fmt: skip
+        first = store._make_transcript("hg19", row)
+        second = store._make_transcript("hg19", {**row, "exons": "900000-900100", "tx_low": 900000})
+        self.assertEqual((first.tx_low, second.tx_low), (100, 900000))
 
 
 class GenomeReading(unittest.TestCase):

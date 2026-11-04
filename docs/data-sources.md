@@ -1,6 +1,6 @@
 # Data sources, licences and links
 
-Every file comes directly from its original source to your computer. The list that controls this is [`src/varsight/data/sources.json`](../src/varsight/data/sources.json). This repository redistributes only a small demo subset.
+Every file comes directly from its original source to your computer. The list that controls this is [`src/varshift/data/sources.json`](../src/varshift/data/sources.json). This repository redistributes only a small demo subset.
 
 Sizes and dates were read from each server on 1 November 2026, using header requests.
 
@@ -9,7 +9,7 @@ Sizes and dates were read from each server on 1 November 2026, using header requ
 
 ## Core databases
 
-`varsight setup` installs these. You choose hg19, hg38 or both, and only the files for your choice are downloaded.
+`varshift setup` installs these. You choose hg19, hg38 or both, and only the files for your choice are downloaded.
 
 | Source | Used for | Download | Last changed | Update policy | Licence note |
 | - | - | - | -: | - | - |
@@ -48,12 +48,12 @@ A variant in one of those domains still lists the family, but not that it falls 
 These are optional. A report gains columns only for the ones you install, and the core results never depend on them.
 
 ```bash
-varsight databases              # list them all, with what is installed
-varsight add dbsnp              # add one
-varsight remove dbsnp           # remove it and free the disk space
+varshift databases              # list them all, with what is installed
+varshift add dbsnp              # add one
+varshift remove dbsnp           # remove it and free the disk space
 ```
 
-### VarSight can fetch these
+### VarShift can fetch these
 
 | Database | Adds | Transfer | Kept on disk (estimate) | Licence note |
 | - | - | - | - | - |
@@ -75,14 +75,14 @@ varsight remove dbsnp           # remove it and free the disk space
 | `alphamissense` | Missense prediction from Google DeepMind | About 600 MB per build | About 3 GB per build | The file header states CC BY-NC-SA 4.0, while a later Zenodo record says CC BY 4.0 |
 
 ```bash
-varsight add revel accept
+varshift add revel accept
 ```
 
-REVEL comes from [its Zenodo record](https://doi.org/10.5281/zenodo.7072866), which the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads) names as the other place to get it. Its own server refuses scripted downloads, so VarSight doesn't use that one. Zenodo publishes the file's MD5, and every download is checked against it.
+REVEL comes from [its Zenodo record](https://doi.org/10.5281/zenodo.7072866), which the [REVEL download page](https://sites.google.com/site/revelgenomics/downloads) names as the other place to get it. Its own server refuses scripted downloads, so VarShift doesn't use that one. Zenodo publishes the file's MD5, and every download is checked against it.
 
 ### These need your own account
 
-VarSight can't download these for you, because their licences need your own registration. Download the file yourself, then point VarSight at it. The file stays on your computer.
+VarShift can't download these for you, because their licences need your own registration. Download the file yourself, then point VarShift at it. The file stays on your computer.
 
 | Database | How to get it | Licence note |
 | - | - | - |
@@ -94,8 +94,8 @@ VarSight can't download these for you, because their licences need your own regi
 | `primateai` | Sign in at basespace.illumina.com/s/yYGFdGih1rXL, and download the PrimateAI scores | Check Illumina's terms for your use |
 
 ```bash
-varsight add cosmic_census file=Cosmic_CancerGeneCensus_v101_GRCh38.tsv.gz accept
-varsight add cosmic file=Cosmic_GenomeScreensMutant_v101_GRCh38.tsv.gz build=hg38 accept
+varshift add cosmic_census file=Cosmic_CancerGeneCensus_v101_GRCh38.tsv.gz accept
+varshift add cosmic file=Cosmic_GenomeScreensMutant_v101_GRCh38.tsv.gz build=hg38 accept
 ```
 
 If the file name shows the build, you don't need `build=`.
@@ -108,7 +108,7 @@ If the file name shows the build, you don't need `build=`.
 | dbSNP, 1000 Genomes, gnomAD, gnomAD SV, REVEL | Builders tested on samples cut from each real file. The full downloads have not been run |
 | AlphaMissense | Builder tested on a small real-format sample |
 | phyloP | The reader was run across the network against the real 9 GB files. It gives 9.236 at hg38 chr7:140753336, the same as dbNSFP's value for that site |
-| COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | **Written from each provider's documented columns, without a real file.** If your file doesn't match, VarSight stops with a clear message and installs nothing. Please report it |
+| COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | **Written from each provider's documented columns, without a real file.** If your file doesn't match, VarShift stops with a clear message and installs nothing. Please report it |
 
 ### Scope for very large files
 
@@ -123,7 +123,7 @@ Frequencies listed in ClinVar records (ExAC, ESP, 1000 Genomes) are included wit
 - **OncoKB:** full content needs a licence. Link only.
 - **Franklin, VarSome, ProteinPaint:** websites without a free bulk download. Link only.
 - **CADD, dbNSFP:** not added. Their terms need checking first, and many restrict commercial use.
-- **hg18:** VarSight works with hg19 and hg38 only. hg18 input is refused rather than guessed at.
+- **hg18:** VarShift works with hg19 and hg38 only. hg18 input is refused rather than guessed at.
 - **UCSC chain files:** licensed for non-commercial use by independent researchers and nonprofits only, so Ensembl's are used instead.
 
 ## Reference links
@@ -151,7 +151,7 @@ Each link was opened in an automated browser using BRAF V600E, on the date shown
 | OMIM | Confirmed ID | **Not confirmed:** the test hit a security page | 1 Nov 2026 |
 | UCSC Genome Browser | Built | **Not tested:** the test browser refused the site | 1 Nov 2026 |
 
-A format that changes is a one-line fix in [`data/links.json`](../src/varsight/data/links.json).
+A format that changes is a one-line fix in [`data/links.json`](../src/varshift/data/links.json).
 
 ## Citing
 

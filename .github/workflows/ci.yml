@@ -29,9 +29,9 @@ jobs:
       - name: The package also installs with pip
         run: |
           python -m pip install .
-          varsight version
+          varshift version
       - name: The installed package has no runtime dependencies
-        run: python -c "import importlib.metadata as m; assert not m.requires('varsight')"
+        run: python -c "import importlib.metadata as m; assert not m.requires('varshift')"
 
   windows:
     runs-on: windows-latest
@@ -55,5 +55,5 @@ jobs:
       - name: The command works from Command Prompt
         shell: cmd
         run: |
-          "%RUNNER_TEMP%\bin\varsight" version
-          "%RUNNER_TEMP%\bin\varsight" demo demodir=demo out=cmd_demo replace
+          "%RUNNER_TEMP%\bin\varshift" version
+          "%RUNNER_TEMP%\bin\varshift" demo demodir=demo out=cmd_demo replace

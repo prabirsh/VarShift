@@ -1,5 +1,5 @@
 ##fileformat=VCFv4.2
-##source=VarSight demo. Public example variants only, with made-up depth and genotype values. Not from a patient.
+##source=VarShift demo. Public example variants only, with made-up depth and genotype values. Not from a patient.
 ##reference=hg19
 ##contig=<ID=chr1,length=249250621>
 ##contig=<ID=chr2,length=243199373>

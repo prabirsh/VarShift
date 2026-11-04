@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare VarSight's names with an annotated VCF you already trust (VEP-style CSQ field).
+"""Compare VarShift's names with an annotated VCF you already trust (VEP-style CSQ field).
 
 Runs entirely on this computer. It prints counts and writes differences to a local file you choose.
 Differences list transcript names only, with no sample IDs or genotypes, but treat that file as
@@ -19,15 +19,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from varsight.builds import canonical_contig  # noqa: E402
-from varsight.config import resolve_data_dir  # noqa: E402
-from varsight.consequence import SequenceCache, annotate  # noqa: E402
-from varsight.errors import VarSightError  # noqa: E402
-from varsight.pipeline.builders import open_text  # noqa: E402
-from varsight.pipeline.validate import comparable  # noqa: E402
-from varsight.store import DataStore  # noqa: E402
-from varsight.vcf import VcfReader  # noqa: E402
-from varsight.variant import normalize  # noqa: E402
+from varshift.builds import canonical_contig  # noqa: E402
+from varshift.config import resolve_data_dir  # noqa: E402
+from varshift.consequence import SequenceCache, annotate  # noqa: E402
+from varshift.errors import VarShiftError  # noqa: E402
+from varshift.pipeline.builders import open_text  # noqa: E402
+from varshift.pipeline.validate import comparable  # noqa: E402
+from varshift.store import DataStore  # noqa: E402
+from varshift.vcf import VcfReader  # noqa: E402
+from varshift.variant import normalize  # noqa: E402
 
 _CSQ_RE = re.compile(r'^##INFO=<ID=CSQ,.*Format: ([^"]+)"')
 
@@ -64,7 +64,7 @@ def main() -> int:
     with VcfReader(vcf) as reader:
         build = options.get("build") or reader.header.build or reader.header.named_build
         if build not in store.builds:
-            raise SystemExit(f"cannot use build {build}; add build=hg19 or build=hg38, or install it with varsight setup")
+            raise SystemExit(f"cannot use build {build}; add build=hg19 or build=hg38, or install it with varshift setup")
         genome = store.genome(build)
         cache = SequenceCache(genome)
         for record in reader.records():
@@ -76,7 +76,7 @@ def main() -> int:
                 continue
             try:
                 variant = normalize(genome, canonical_contig(record.chrom, build), record.pos, record.ref, record.alt)
-            except VarSightError:
+            except VarShiftError:
                 counts["records_with_ref_mismatch"] += 1
                 continue
             counts["records_compared"] += 1
@@ -98,14 +98,14 @@ def main() -> int:
                 if ours == change:
                     counts[f"c_{kind}_same"] += 1
                 else:
-                    differences.append(f"{accession}\tc.\tother tool {change}\tVarSight {ours}")
+                    differences.append(f"{accession}\tc.\tother tool {change}\tVarShift {ours}")
                 theirs_p = fields[p_at].split(":", 1)[-1].replace("%3D", "=")
                 if theirs_p:
                     counts[f"p_{kind}_total"] += 1
                     if comparable(effect.hgvs_p) == comparable(theirs_p):
                         counts[f"p_{kind}_same"] += 1
                     else:
-                        differences.append(f"{accession}\tp.\tother tool {theirs_p}\tVarSight {effect.hgvs_p}")
+                        differences.append(f"{accession}\tp.\tother tool {theirs_p}\tVarShift {effect.hgvs_p}")
     store.close()
     for name, value in sorted(counts.items()):
         print(f"{name:40} {value:,}")

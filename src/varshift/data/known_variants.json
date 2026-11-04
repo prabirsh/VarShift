@@ -1,0 +1,60 @@
+{
+  "_comment": "Run after setup and before an update goes live. Every value here was produced by VarShift on real sequence and matches ClinVar's record for that variation on both builds. See docs/validation.md.",
+  "variants": [
+    {
+      "input": "BRAF V600E",
+      "build": "hg19",
+      "expect": {"key_hg19": "chr7-140453136-A-T", "key_hg38": "chr7-140753336-A-T", "gene": "BRAF", "c": "c.1799T>A", "p": "p.Val600Glu", "effect": "missense_variant", "clinvar_id": 13961}
+    },
+    {
+      "input": "chr7:g.140753336A>T",
+      "build": "hg38",
+      "expect": {"key_hg19": "chr7-140453136-A-T", "key_hg38": "chr7-140753336-A-T", "gene": "BRAF", "c": "c.1799T>A", "p": "p.Val600Glu", "clinvar_id": 13961}
+    },
+    {
+      "input": "KRAS G12D",
+      "build": "hg38",
+      "expect": {"key_hg19": "chr12-25398284-C-T", "key_hg38": "chr12-25245350-C-T", "gene": "KRAS", "c": "c.35G>A", "p": "p.Gly12Asp", "effect": "missense_variant", "clinvar_id": 12582}
+    },
+    {
+      "input": "TP53 R175H",
+      "build": "hg19",
+      "expect": {"key_hg19": "chr17-7578406-C-T", "key_hg38": "chr17-7675088-C-T", "gene": "TP53", "c": "c.524G>A", "p": "p.Arg175His", "clinvar_id": 12374}
+    },
+    {
+      "input": "EGFR L858R",
+      "build": "hg19",
+      "expect": {"key_hg19": "chr7-55259515-T-G", "key_hg38": "chr7-55191822-T-G", "gene": "EGFR", "c": "c.2573T>G", "p": "p.Leu858Arg", "clinvar_id": 16609}
+    },
+    {
+      "input": "EGFR E746_A750del",
+      "build": "hg38",
+      "expect": {"key_hg19": "chr7-55242465-GGAATTAAGAGAAGCA-G", "key_hg38": "chr7-55174772-GGAATTAAGAGAAGCA-G", "gene": "EGFR", "c": "c.2236_2250del", "p": "p.Glu746_Ala750del", "effect": "inframe_deletion", "clinvar_id": 177620}
+    },
+    {
+      "input": "PIK3CA H1047R",
+      "build": "hg19",
+      "expect": {"key_hg19": "chr3-178952085-A-G", "key_hg38": "chr3-179234297-A-G", "gene": "PIK3CA", "c": "c.3140A>G", "p": "p.His1047Arg", "clinvar_id": 13652}
+    },
+    {
+      "input": "IDH1 R132H",
+      "build": "hg38",
+      "expect": {"key_hg19": "chr2-209113112-C-T", "key_hg38": "chr2-208248388-C-T", "gene": "IDH1", "c": "c.395G>A", "p": "p.Arg132His", "clinvar_id": 156444}
+    },
+    {
+      "input": "BRCA1 c.68_69del",
+      "build": "hg19",
+      "expect": {"key_hg19": "chr17-41276044-ACT-A", "key_hg38": "chr17-43124027-ACT-A", "gene": "BRCA1", "c": "c.68_69del", "p": "p.Glu23ValfsTer17", "effect": "frameshift_variant", "clinvar_id": 17662}
+    },
+    {
+      "input": "BRCA2 c.5946del",
+      "build": "hg38",
+      "expect": {"key_hg19": "chr13-32914437-GT-G", "key_hg38": "chr13-32340300-GT-G", "gene": "BRCA2", "c": "c.5946del", "p": "p.Ser1982ArgfsTer22", "effect": "frameshift_variant", "clinvar_id": 9325}
+    },
+    {
+      "input": "NC_012920.1:m.3243A>G",
+      "build": "hg38",
+      "expect": {"key_hg38": "chrM-3243-A-G", "clinvar_id": 9589}
+    }
+  ]
+}

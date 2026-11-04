@@ -11,10 +11,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from varsight import cli, priority, updates
-from varsight.commandline import COMMANDS, parse, render_help
-from varsight.config import is_windows_mount, load_settings, resolve_data_dir, save_setting
-from varsight.errors import InputError
+from varshift import cli, priority, updates
+from varshift.commandline import COMMANDS, parse, render_help
+from varshift.config import is_windows_mount, load_settings, resolve_data_dir, save_setting
+from varshift.errors import InputError
 
 
 class Parsing(unittest.TestCase):
@@ -71,7 +71,7 @@ class Settings(unittest.TestCase):
         patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self.root)}, clear=False)
         patcher.start()
         self.addCleanup(patcher.stop)
-        os.environ.pop("VARSIGHT_DATA", None)
+        os.environ.pop("VARSHIFT_DATA", None)
 
 
 class Config(Settings):
@@ -82,17 +82,41 @@ class Config(Settings):
     def test_data_folder_order(self):
         save_setting("data_dir", str(self.root / "saved"))
         self.assertEqual(resolve_data_dir(), self.root / "saved")
-        with mock.patch.dict(os.environ, {"VARSIGHT_DATA": str(self.root / "env")}):
+        with mock.patch.dict(os.environ, {"VARSHIFT_DATA": str(self.root / "env")}):
             self.assertEqual(resolve_data_dir(), (self.root / "env").resolve())
             self.assertEqual(resolve_data_dir(str(self.root / "given")), (self.root / "given").resolve())
 
     def test_setup_refuses_a_windows_drive_from_wsl_unless_told(self):
         windows_drive = self.root / "drive"
-        with mock.patch.object(cli, "is_windows_mount", return_value=True), mock.patch("varsight.pipeline.manager.DataManager") as manager:
+        with mock.patch.object(cli, "is_windows_mount", return_value=True), mock.patch("varshift.pipeline.manager.DataManager") as manager:
             self.assertEqual(cli.main(["setup", "build=hg19", f"data={windows_drive}", "yes"]), 1)
             manager.assert_not_called()
             with mock.patch.object(cli, "_selftest", return_value=0):
                 self.assertEqual(cli.main(["setup", "build=hg19", f"data={windows_drive}", "yes", "windowsdrive"]), 0)
+            manager.assert_called_once()
+
+    def test_update_refuses_a_windows_drive_from_wsl_but_still_checks(self):
+        windows_drive = str(self.root / "drive")
+        with mock.patch.object(cli, "is_windows_mount", return_value=True), mock.patch("varshift.pipeline.manager.DataManager") as manager:
+            manager.return_value.update.return_value = []
+            with mock.patch("sys.stderr", new=io.StringIO()) as stderr, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["update", f"data={windows_drive}"]), 1)
+            self.assertIn("update check works here", stderr.getvalue())
+            manager.assert_not_called()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["update", "check", f"data={windows_drive}"]), 0)
+                self.assertEqual(cli.main(["update", f"data={windows_drive}", "windowsdrive"]), 0)
+            self.assertEqual(manager.call_count, 2)
+
+    def test_add_refuses_a_windows_drive_from_wsl_unless_told(self):
+        windows_drive = str(self.root / "drive")
+        with mock.patch.object(cli, "is_windows_mount", return_value=True), mock.patch("varshift.pipeline.manager.DataManager") as manager:
+            manager.return_value.add.return_value = []
+            with mock.patch("sys.stderr", new=io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["add", "hotspots", f"data={windows_drive}", "yes"]), 1)
+            manager.assert_not_called()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.main(["add", "hotspots", f"data={windows_drive}", "yes", "windowsdrive"]), 0)
             manager.assert_called_once()
 
     def test_running_out_of_memory_says_what_to_do(self):
@@ -109,7 +133,7 @@ class Config(Settings):
             with self.assertRaises(InputError) as caught:
                 resolve_data_dir(text)
             self.assertIn(hint, str(caught.exception))
-        with mock.patch.dict(os.environ, {"VARSIGHT_DATA": "I:\\data"}), self.assertRaises(InputError):
+        with mock.patch.dict(os.environ, {"VARSHIFT_DATA": "I:\\data"}), self.assertRaises(InputError):
             resolve_data_dir()
         self.assertEqual(resolve_data_dir("/mnt/i/data"), Path("/mnt/i/data").resolve())
 
@@ -119,7 +143,7 @@ class Config(Settings):
 
     def test_a_damaged_settings_file_is_ignored(self):
         save_setting("updates", "off")
-        (self.root / "varsight" / "config.json").write_text("{not json", encoding="utf-8")
+        (self.root / "varshift" / "config.json").write_text("{not json", encoding="utf-8")
         self.assertEqual(load_settings(), {})
 
     @unittest.skipIf(os.name == "nt", "WSL paths")
@@ -160,7 +184,7 @@ class Setup(Settings):
         stdin = mock.Mock()
         stdin.isatty.return_value = tty
         with (
-            mock.patch("varsight.pipeline.manager.DataManager", FakeManager),
+            mock.patch("varshift.pipeline.manager.DataManager", FakeManager),
             mock.patch.object(cli, "_selftest", return_value=0),
             mock.patch.object(cli.sys, "stdin", stdin),
             mock.patch("builtins.input", side_effect=list(answers or [])),
@@ -261,7 +285,7 @@ class UpdateNotice(Settings):
         self._status([{"artifact": "clinvar.hg19", "title": "ClinVar", "policy": "auto"}, {"artifact": "clinvar.hg38", "title": "ClinVar", "policy": "auto"}])
         lines = updates.notice_lines(self.data, self.manifest)
         self.assertEqual(lines[0].count("ClinVar"), 1)
-        self.assertIn("varsight update", " ".join(lines))
+        self.assertIn("varshift update", " ".join(lines))
         self.assertIn("installed versions", lines[0])
 
     def test_a_change_that_can_rename_things_asks_for_approval(self):
@@ -294,7 +318,7 @@ class UpdateNotice(Settings):
         with mock.patch.object(updates.subprocess, "Popen") as started:
             self.assertTrue(updates.check_in_background(self.data, self.manifest))
         arguments = started.call_args.args[0]
-        self.assertEqual(arguments[1:3], ["-m", "varsight.pipeline.updatecheck"])
+        self.assertEqual(arguments[1:3], ["-m", "varshift.pipeline.updatecheck"])
         self.assertEqual(arguments[3], str(self.data))
 
     def test_a_loop_of_commands_starts_only_one_check(self):
@@ -347,6 +371,11 @@ class Priority(unittest.TestCase):
     def test_benign_is_low_even_when_it_is_missense(self):
         self.assertEqual(self._level({"classification": "Benign"}, ["missense_variant"])["label"], "Low")
         self.assertEqual(self._level({"classification": "Likely benign"}, ["missense_variant"])["label"], "Low")
+
+    def test_an_expert_panel_benign_call_lowers_it(self):
+        result = self._level(terms=["missense_variant"], advanced={"clingen_variants": {"assertion": "Benign"}})
+        self.assertEqual(result["label"], "Low")
+        self.assertIn("ClinGen expert panel: Benign", result["reasons"])
 
     def test_truncating_with_no_record_is_medium(self):
         self.assertEqual(self._level(terms=["stop_gained"])["label"], "Medium")

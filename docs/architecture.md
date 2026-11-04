@@ -1,6 +1,6 @@
 # Architecture
 
-VarSight is a small Python package with no runtime dependencies. Each module has one job and can be read on its own.
+VarShift is a small Python package with no runtime dependencies. Each module has one job and can be read on its own.
 
 ## Modules
 
@@ -40,7 +40,7 @@ VarSight is a small Python package with no runtime dependencies. Each module has
 ## Data folder
 
 ```text
-varsight-data/
+varshift-data/
   manifest.json          what is installed: versions, sizes, SHA-256 of each file, sources, licences
   genome/hg19.fa, .fai   uncompressed, for fast random access
   genome/hg38.fa, .fai

@@ -2,11 +2,11 @@
 
 ## How you find out
 
-You don't need to remember. Before each annotation VarSight reads one small saved file, and if a newer version exists it prints a notice and then carries on:
+You don't need to remember. Before each annotation VarShift reads one small saved file, and if a newer version exists it prints a notice and then carries on:
 
 ```text
 Update available: ClinVar, HGNC. These results use your installed versions.
-  To update: varsight update    To hide this: varsight config updates=off
+  To update: varshift update    To hide this: varshift config updates=off
 ```
 
 The same notice appears at the top of the HTML report and on the Summary sheet in Excel, so a reader can see which versions the results used.
@@ -17,12 +17,12 @@ It doesn't slow anything down:
 | - | - | - |
 | Read the notice | Reads `update_status.json` from the data folder | No |
 | Annotate | As usual, using what is installed | No |
-| Check for news, at most once a day | A separate background process asks each source, using header requests only, and saves the answer for next time | No: annotation doesn't wait for it |
+| Check for news, at most once a day | A separate background process asks each source, using header requests (plus the folder listing for GENCODE and MANE), and saves the answer for next time | No: annotation doesn't wait for it |
 
 The check sends only an ordinary request for each public file. Nothing about your variants or files goes with it, and a test reads the source to check this. To turn it off:
 
 ```bash
-varsight config updates=off
+varshift config updates=off
 ```
 
 If no check has been possible and your data is over 30 days old, the notice says that instead.
@@ -31,7 +31,7 @@ If no check has been possible and your data is over 30 days old, the notice says
 
 ```mermaid
 flowchart TD
-    START["varsight update"] ==> CHECK["Ask each source: has this file changed? Headers only"]
+    START["varshift update"] ==> CHECK["Ask each source: has this file changed? Headers, and two folder listings"]
     CHECK ==>|"No"| DONE["Nothing changes"]
     CHECK ==>|"Yes"| POLICY{"Update policy for this database"}
     POLICY ==>|"Automatic: ClinVar, HGNC, UniProt, CIViC, ClinGen, HPO"| DOWNLOAD
@@ -48,14 +48,16 @@ flowchart TD
 
 Any failure leaves what is installed untouched. Each run writes a report to `reports/` in the data folder.
 
+"Has this file changed?" is answered from the file's ETag and date. A server that sends neither, or dates the file with the moment you asked, as ClinGen does for its gene-validity file, can't say. Such a file counts as changed once a week, so it is read again weekly rather than on every check.
+
 ## Commands
 
 ```bash
-varsight update check                  # what is new; changes nothing
-varsight update                        # apply the automatic ones
-varsight update approve=transcripts    # also apply transcript updates
-varsight update approve=dbsnp          # one advanced database
-varsight rollback                      # go back to the previous data
+varshift update check                  # what is new; changes nothing
+varshift update                        # apply the automatic ones
+varshift update approve=transcripts    # also apply transcript updates
+varshift update approve=dbsnp          # one advanced database
+varshift rollback                      # go back to the previous data
 ```
 
 The last two snapshots are kept. Each result records the data versions it used, so you can tell which data produced an older result.
@@ -67,9 +69,9 @@ The last two snapshots are kept. Each result records the data versions it used, 
 | Automatic | ClinVar, HGNC, UniProt, CIViC, ClinGen, HPO, Cancer Hotspots, DECIPHER, ClinGen classifications | Small and frequent, and don't change how variants are named |
 | Your approval | RefSeq, GENCODE, MANE, dbSNP, gnomAD, 1000 Genomes, REVEL, AlphaMissense, phyloP | Transcript releases can change c. and p. names you have already reported, and the others are very large downloads |
 | Once | Reference genomes, chain files | Not expected to change |
-| Your own file | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | They need your account, so VarSight can't fetch them. To update one, download the new release and run `varsight add` again |
+| Your own file | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | They need your account, so VarShift can't fetch them. To update one, download the new release and run `varshift add` again |
 
-When you approve a transcript update, run `varsight validate` afterwards.
+When you approve a transcript update, run `varshift validate` afterwards.
 
 ## Making it automatic
 
@@ -80,19 +82,21 @@ Cron inside WSL only runs while WSL is awake, so use Windows Task Scheduler. If 
 For a native Windows install:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\register-weekly-update.ps1 -DataDir C:\Users\YOU\varsight-data
+powershell -ExecutionPolicy Bypass -File .\register-weekly-update.ps1 -DataDir C:\Users\YOU\varshift-data
 ```
 
 For a WSL install:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\register-weekly-update.ps1 -DataDir /home/YOU/varsight-data -WslCommand /home/YOU/.local/bin/varsight
+powershell -ExecutionPolicy Bypass -File .\register-weekly-update.ps1 -DataDir /home/YOU/varshift-data -WslCommand /home/YOU/.local/bin/varshift
 ```
+
+If WSL reads its data from a Windows drive, such as `/mnt/i/varshift-data`, register the native task with that folder's Windows path instead. From WSL, `varshift update` refuses a Windows drive, because building there is slow and can run out of memory.
 
 This runs every Sunday at 09:00. Change it with `-Day Monday -Time 20:00`, and use `-Distribution Ubuntu` if you have more than one WSL distribution. It needs no administrator rights.
 
 ```powershell
-Start-ScheduledTask -TaskName 'VarSight weekly data update'
+Start-ScheduledTask -TaskName 'VarShift weekly data update'
 powershell -ExecutionPolicy Bypass -File .\register-weekly-update.ps1 -Unregister
 ```
 
@@ -107,7 +111,7 @@ crontab -e
 Add this line, with your own paths:
 
 ```text
-0 9 * * 0  /path/to/VarSight/scripts/weekly-update.sh /home/me/varsight-data /home/me/.local/bin/varsight
+0 9 * * 0  /path/to/VarShift/scripts/weekly-update.sh /home/me/varshift-data /home/me/.local/bin/varshift
 ```
 
 The script exits with a non-zero status when something failed, so your scheduler can show it. It writes a dated log to `reports/` in the data folder.

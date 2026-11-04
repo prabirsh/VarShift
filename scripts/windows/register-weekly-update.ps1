@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Register a weekly VarSight data update in Windows Task Scheduler.
+    Register a weekly VarShift data update in Windows Task Scheduler.
 
 .DESCRIPTION
     If the computer was off at the scheduled time, Windows runs the task at the next chance. Registering
@@ -10,10 +10,10 @@
     WSL install: also give -WslCommand, because cron inside WSL only runs while WSL is awake.
 
 .EXAMPLE
-    .\register-weekly-update.ps1 -DataDir C:\Users\me\varsight-data
+    .\register-weekly-update.ps1 -DataDir C:\Users\me\varshift-data
 
 .EXAMPLE
-    .\register-weekly-update.ps1 -DataDir /home/me/varsight-data -WslCommand /home/me/.local/bin/varsight
+    .\register-weekly-update.ps1 -DataDir /home/me/varshift-data -WslCommand /home/me/.local/bin/varshift
 
 .EXAMPLE
     .\register-weekly-update.ps1 -Unregister
@@ -30,7 +30,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$taskName = 'VarSight weekly data update'
+$taskName = 'VarShift weekly data update'
 
 if ($Unregister) {
     if ($PSCmdlet.ShouldProcess($taskName, 'Remove scheduled task')) {
@@ -51,10 +51,10 @@ if ($WslCommand) {
     $action = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument ($wslArguments -join ' ')
 }
 else {
-    $folder = Join-Path $env:LOCALAPPDATA 'VarSight\bin'
-    $launcher = @('varsight.exe', 'varsight.cmd') | ForEach-Object { Join-Path $folder $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    $folder = Join-Path $env:LOCALAPPDATA 'VarShift\bin'
+    $launcher = @('varshift.exe', 'varshift.cmd') | ForEach-Object { Join-Path $folder $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $launcher) {
-        throw "Cannot find the varsight command in $folder. Run install.ps1 first, or give -WslCommand for a WSL install."
+        throw "Cannot find the varshift command in $folder. Run install.ps1 first, or give -WslCommand for a WSL install."
     }
     $action = New-ScheduledTaskAction -Execute $launcher -Argument "update `"data=$DataDir`""
 }
@@ -64,7 +64,7 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAv
 
 if ($PSCmdlet.ShouldProcess($taskName, 'Register scheduled task')) {
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings `
-        -Description 'Runs one VarSight data update. See docs/updates.md.' -Force | Out-Null
+        -Description 'Runs one VarShift data update. See docs/updates.md.' -Force | Out-Null
     Write-Output "Registered: $taskName, every $Day at $Time."
     Write-Output "Try it now with: Start-ScheduledTask -TaskName '$taskName'"
     Write-Output "Remove it with:  .\register-weekly-update.ps1 -Unregister"

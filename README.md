@@ -1,15 +1,15 @@
-# VarSight
+# VarShift
 
-[![CI](https://github.com/prabirsh/VarSight/actions/workflows/ci.yml/badge.svg)](https://github.com/prabirsh/VarSight/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/prabirsh/VarSight/actions/workflows/codeql.yml/badge.svg)](https://github.com/prabirsh/VarSight/actions/workflows/codeql.yml)
+[![CI](https://github.com/prabirsh/VarShift/actions/workflows/ci.yml/badge.svg)](https://github.com/prabirsh/VarShift/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/prabirsh/VarShift/actions/workflows/codeql.yml/badge.svg)](https://github.com/prabirsh/VarShift/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **Offline variant annotation for hg19 and hg38, on Ubuntu, WSL, PowerShell and Command Prompt.** Give it a protein change, a cDNA change, a genomic position or a whole VCF. It returns the variant on both builds, HGVS names, its effect, what each database says, a review priority with its reasons, and a link to check each database yourself.
 
-![Checking one variant by hand means many websites, while one VarSight command reports on a whole VCF](docs/assets/how-varsight-helps.svg)
+![Checking one variant by hand means many websites, while one VarShift command reports on a whole VCF](docs/assets/how-varshift-helps.svg)
 
 > [!IMPORTANT]
-> VarSight is research software. Results for patient care must be checked against the linked sources and validated by your laboratory. See [how far it has been tested](#how-far-it-has-been-tested).
+> VarShift is research software. Results for patient care must be checked against the linked sources and validated by your laboratory. See [how far it has been tested](#how-far-it-has-been-tested).
 
 ## The problem, and how this helps
 
@@ -30,27 +30,29 @@
 **Ubuntu or WSL:**
 
 ```bash
-git clone https://github.com/prabirsh/VarSight.git
-cd VarSight
+git clone https://github.com/prabirsh/VarShift.git
+cd VarShift
 sh install.sh
 ```
 
-**Windows PowerShell** (or `install.bat` in Command Prompt), with Python from python.org:
+**Windows PowerShell** (or `install.bat` in Command Prompt), with Python from python.org or `winget install Python.Python.3.12`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-This installs the `varsight` command and runs the [demo](demo/README.md) with no download. Then choose your databases. Setup asks whether you want hg19, hg38 or both, and downloads only that:
+This installs the `varshift` command and runs the [demo](demo/README.md) with no download. To choose where the command goes, or to skip the demo or setup, see [installer options](docs/run-guide.md#installer-options). Then choose your databases. Setup asks whether you want hg19, hg38 or both, and downloads only that:
 
 ```bash
-varsight setup
+varshift setup
 ```
 
 ```bash
-varsight annotate "BRAF V600E" build=hg19
-varsight annotate sample.vcf.gz
+varshift annotate "BRAF V600E" build=hg19
+varshift annotate sample.vcf.gz
 ```
+
+**In WSL with the data on a Windows drive** (`/mnt/c`, `/mnt/p` and so on), run `setup`, `update` and `add` from PowerShell, and annotate from either. WSL refuses to build on a Windows drive, because it is about 30 times slower and can run out of memory. [How to share one data folder](docs/run-guide.md#2-set-up-the-databases).
 
 **[The full guide for each system](docs/run-guide.md)** covers every step and common problems.
 
@@ -68,11 +70,11 @@ varsight annotate sample.vcf.gz
 | A list | A text file with one of the above per line | As above |
 | A VCF | `.vcf`, `.vcf.gz` or `.vcf.bgz` | Read from the header |
 
-VarSight works with hg19 and hg38. hg18 is refused rather than guessed at.
+VarShift works with hg19 and hg38. hg18 is refused rather than guessed at.
 
 ## Output
 
-A single variant prints a card on the screen. A list or VCF gets a folder, `sample_varsight/`, with three reports:
+A single variant prints a card on the screen. A list or VCF gets a folder in the current directory, `sample_varshift/`, or wherever `out=` says, with three reports:
 
 | File | For |
 | - | - |
@@ -106,7 +108,7 @@ flowchart TD
 Each large download is converted once at setup into a SQLite file with an index, so annotating never scans a file or uses the network. To see every step, file and query for one variant:
 
 ```bash
-varsight explain "BRAF V600E" build=hg19
+varshift explain "BRAF V600E" build=hg19
 ```
 
 [How lookups work, step by step](docs/how-lookups-work.md).
@@ -119,20 +121,20 @@ varsight explain "BRAF V600E" build=hg19
 
 | Add it like this | Databases |
 | - | - |
-| `varsight add NAME` | `dbsnp` (brings TOPMed frequencies), `gnomad`, `thousand_genomes`, `gnomad_sv`, `phylop`, `hotspots`, `decipher`, `clingen_variants` |
-| `varsight add NAME accept` | `revel`, `alphamissense` |
-| `varsight add NAME file=PATH accept`, with your own licensed download | `cosmic`, `cosmic_census`, `cosmic_fusions`, `omim`, `spliceai`, `primateai` |
+| `varshift add NAME` | `dbsnp` (brings TOPMed frequencies), `gnomad`, `thousand_genomes`, `gnomad_sv`, `phylop`, `hotspots`, `decipher`, `clingen_variants` |
+| `varshift add NAME accept` | `revel`, `alphamissense` |
+| `varshift add NAME file=PATH accept`, with your own licensed download | `cosmic`, `cosmic_census`, `cosmic_fusions`, `omim`, `spliceai`, `primateai` |
 
-`varsight databases` lists each with its size and licence. [Sizes, licences and what has been tested](docs/data-sources.md). **Check the licences against your use**, particularly if results go into paid reports.
+`varshift databases` lists each with its size and licence. [Sizes, licences and what has been tested](docs/data-sources.md). **Check the licences against your use**, particularly if results go into paid reports.
 
 ## Keeping data current
 
 A notice appears by itself when something newer exists. Reading it is one small file, and the check runs apart from annotation, sending nothing about your variants.
 
 ```bash
-varsight update check
-varsight update
-varsight rollback
+varshift update check
+varshift update
+varshift rollback
 ```
 
 New data is built beside the current data, tested with known variants, and only then switched in. Transcript updates can change names, so they wait for your approval. [Details, and how to schedule it](docs/updates.md).
@@ -152,7 +154,7 @@ Measured on a laptop with a 2-core i3 and 3.9 GB of memory, using gene-dense pub
 
 | You choose | Download | Kept on disk | Setup time at 2 MB/s |
 | - | - | -: | -: |
-| hg19 or hg38 | About 1.8 GB | About 5 GB | [About 45 minutes](docs/benchmarks.md#setup-time) |
+| hg19 or hg38 | About 1.7 GB for hg19, 1.9 GB for hg38 | About 5 GB | [About 45 minutes](docs/benchmarks.md#setup-time) |
 | Both | 3.0 GB | About 10 GB | About 1.5 hours (estimate) |
 
 You need Python 3.10 or newer on Linux, WSL, or Windows 10 and later, with about 2 GB of free memory.
@@ -173,12 +175,12 @@ Most of the remaining indel differences are the same change written another way,
 
 **Not yet proven:**
 
-- **hg38 accuracy.** Measured on 12 well-studied genes only. Run `varsight validate` after setup to measure your own data.
-- **Every setup path.** hg19 has run from start to the self-test, natively on Windows. hg38, both builds together, and a full build inside WSL haven't.
+- **hg38 accuracy.** Measured on 12 well-studied genes only. Run `varshift validate` after setup to measure your own data.
+- **Every setup path.** hg19 has run from start to the self-test, natively on Windows, followed by a real update and rollback, and WSL has annotated from that same data. hg38, both builds together, and a full build inside WSL haven't.
 - **Current Pfam positions.** Domain positions come from Pfam 37.0, the newest release with a small human-only file, so 9.8% of today's protein and family pairs have none. [Details](docs/data-sources.md#core-databases).
 - **Licensed databases.** The COSMIC, OMIM, SpliceAI and PrimateAI readers follow each provider's documented columns, without a real file. A mismatch stops with a clear message.
 - **Microsoft Excel itself.** Workbooks were checked with a separate reader, not opened in Excel.
-- **Other Python versions.** Run on Python 3.14 so far. CI covers 3.10 to 3.14 on Linux, and 3.10 and 3.14 on Windows.
+- **Other Python versions.** Run on Python 3.12 (Windows) and 3.14 (WSL) so far. CI covers 3.10 to 3.14 on Linux, and 3.10 and 3.14 on Windows.
 
 Not covered: CNVs and structural variant calling, and effects on mitochondrial transcripts.
 
@@ -186,15 +188,15 @@ Not covered: CNVs and structural variant calling, and effects on mitochondrial t
 
 | Command | What it does |
 | - | - |
-| `varsight annotate INPUT` | Annotate a description, a list file or a VCF |
-| `varsight setup` | Choose builds, then download and build the data |
-| `varsight databases` | List every database, its size and licence |
-| `varsight add NAME`, `varsight remove NAME` | Add or remove an advanced database |
-| `varsight update`, `varsight rollback` | Apply new versions, or go back |
-| `varsight status`, `varsight doctor` | What is installed, and a check of this computer |
-| `varsight explain INPUT` | Show each step, file and query |
-| `varsight selftest`, `varsight validate`, `varsight benchmark` | Known variants, accuracy, and speed |
-| `varsight demo`, `varsight config`, `varsight help` | Demo with no download, settings, and help |
+| `varshift annotate INPUT` | Annotate a description, a list file or a VCF |
+| `varshift setup` | Choose builds, then download and build the data |
+| `varshift databases` | List every database, its size and licence |
+| `varshift add NAME`, `varshift remove NAME` | Add or remove an advanced database |
+| `varshift update`, `varshift rollback` | Apply new versions, or go back |
+| `varshift status`, `varshift doctor` | What is installed, and a check of this computer |
+| `varshift explain INPUT` | Show each step, file and query |
+| `varshift selftest`, `varshift validate`, `varshift benchmark` | Known variants, accuracy, and speed |
+| `varshift demo`, `varshift config`, `varshift help` | Demo with no download, settings, and help |
 
 ## Security and privacy
 
@@ -215,4 +217,4 @@ No runtime dependencies, no telemetry, HTTPS with a host allow-list, read-only d
 
 ## Citing and licence
 
-Code: [MIT](LICENSE). The data belongs to its sources and keeps its own terms. If you publish results, cite VarSight ([CITATION.cff](CITATION.cff)) and the data sources you relied on.
+Code: [MIT](LICENSE). The data belongs to its sources and keeps its own terms. If you publish results, cite VarShift ([CITATION.cff](CITATION.cff)) and the data sources you relied on.

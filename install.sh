@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the VarSight command on Linux or WSL. It needs only Python 3.10 or newer: no pip, no sudo.
+# Install the VarShift command on Linux or WSL. It needs only Python 3.10 or newer: no pip, no sudo.
 #
 #   sh install.sh               install the command, run the demo, then offer to set up the databases
 #   sh install.sh setup=no      install the command and the demo only
@@ -10,7 +10,7 @@ usage() {
     cat <<'EOF'
 Usage: sh install.sh [option=value ...]
 
-  bin=DIR      where to put the varsight command (default: ~/.local/bin)
+  bin=DIR      where to put the varshift command (default: ~/.local/bin)
   demo=no      skip the bundled demo
   setup=no     don't offer to set up the databases
   test=yes     run the unit tests as well
@@ -44,7 +44,7 @@ for candidate in python3 python; do
     fi
 done
 if [ -z "$python_bin" ]; then
-    echo "VarSight needs Python 3.10 or newer, and none was found." >&2
+    echo "VarShift needs Python 3.10 or newer, and none was found." >&2
     echo "On Ubuntu or WSL: sudo apt update && sudo apt install python3" >&2
     exit 1
 fi
@@ -55,12 +55,12 @@ fi
 echo "Python: $("$python_bin" -V) at $python_bin"
 
 mkdir -p "$bin_dir"
-launcher="$bin_dir/varsight"
+launcher="$bin_dir/varshift"
 # Quote the paths for the shell, so a folder name with spaces or quotes stays safe.
 quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 {
     echo '#!/bin/sh'
-    echo "PYTHONPATH=$(quote "$repo_dir/src") exec $(quote "$python_bin") -m varsight \"\$@\""
+    echo "PYTHONPATH=$(quote "$repo_dir/src") exec $(quote "$python_bin") -m varshift \"\$@\""
 } > "$launcher.tmp"
 chmod 755 "$launcher.tmp"
 mv "$launcher.tmp" "$launcher"
@@ -83,7 +83,7 @@ case ":${PATH}:" in
     *":$bin_dir:"*) ;;
     *)
         echo
-        echo "To use the varsight command from anywhere, run this once:"
+        echo "To use the varshift command from anywhere, run this once:"
         echo "  echo 'export PATH=\"$bin_dir:\$PATH\"' >> ~/.bashrc && . ~/.bashrc"
         ;;
 esac
@@ -99,6 +99,6 @@ fi
 
 echo
 echo "Installed. Next steps:"
-echo "  varsight setup                               choose hg19, hg38 or both, and download"
-echo "  varsight annotate \"BRAF V600E\" build=hg19    annotate a variant"
-echo "  varsight help                                see every command"
+echo "  varshift setup                               choose hg19, hg38 or both, and download"
+echo "  varshift annotate \"BRAF V600E\" build=hg19    annotate a variant"
+echo "  varshift help                                see every command"

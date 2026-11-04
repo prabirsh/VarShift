@@ -10,13 +10,13 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from varsight.annotate import Annotator
-from varsight.cli import main
-from varsight.config import is_windows_mount
-from varsight.errors import DataError, InputError, ReferenceMismatch, ResolveError
-from varsight.pipeline.demo import build_demo_store
-from varsight.pipeline.selftest import run_selftest
-from varsight.store import DataStore
+from varshift.annotate import Annotator
+from varshift.cli import main
+from varshift.config import is_windows_mount
+from varshift.errors import DataError, InputError, ReferenceMismatch, ResolveError
+from varshift.pipeline.demo import build_demo_store
+from varshift.pipeline.selftest import run_selftest
+from varshift.store import DataStore
 
 DEMO = Path(__file__).resolve().parents[1] / "demo"
 
@@ -75,6 +75,11 @@ class KnownVariant(WithData):
         self.assertEqual(records[0]["candidate"]["of"], len(records))
         self.assertTrue(records[0]["candidate"]["in_clinvar"])
         self.assertIn("multiple_candidates", records[0]["flags"])
+
+    def test_in_clinvar_is_true_for_a_position_in_clinvar(self):
+        for text in ("chr7-140453136-A-T", "BRAF c.1799T>A"):
+            with self.subTest(text=text):
+                self.assertTrue(self.one(text, "hg19")["candidate"]["in_clinvar"])
 
     def test_every_input_form_reaches_the_same_variant(self):
         for text in (
@@ -334,7 +339,7 @@ class FileRuns(WithData):
     def test_missing_data_says_what_to_do(self):
         with self.assertRaises(DataError) as caught:
             DataStore(self.root / "nothing")
-        self.assertIn("varsight setup", str(caught.exception))
+        self.assertIn("varshift setup", str(caught.exception))
 
     @unittest.skipIf(os.name == "nt" or is_windows_mount(Path(tempfile.gettempdir())), "POSIX file modes")
     def test_vcf_results_are_private(self):

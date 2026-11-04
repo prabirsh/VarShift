@@ -4,14 +4,14 @@
 
 SQLite is a database kept in one ordinary file. It needs no server and comes with Python, so there is nothing extra to install.
 
-During `varsight setup`, each large download (ClinVar, RefSeq, HGNC and so on) is converted once into its own SQLite file with an index. When you annotate, nothing is downloaded and nothing is scanned. Each question becomes one indexed lookup in one of those files.
+During `varshift setup`, each large download (ClinVar, RefSeq, HGNC and so on) is converted once into its own SQLite file with an index. When you annotate, nothing is downloaded and nothing is scanned. Each question becomes one indexed lookup in one of those files.
 
 An index works like the index at the back of a book. To find a topic you don't read every page: you look it up and go to that page. ClinVar's VCF is 191 MB compressed. Reading it for every variant would be far too slow, while the indexed lookup measured 27 microseconds on a Linux disk.
 
 ## What is on your disk
 
 ```text
-varsight-data/
+varshift-data/
   genome/hg19.fa, hg19.fa.fai      the reference bases, plus an index of where each chromosome starts
   genome/hg38.fa, hg38.fa.fai
   db/transcripts.hg19.sqlite       gene structure: exons, coding region, strand
@@ -24,14 +24,14 @@ varsight-data/
   scores/phylop.hg19.bw            only if you added phyloP; kept as the original file
 ```
 
-If you chose only one build at setup, only that build's files exist. The files for the other build appear if you later run `varsight setup build=both`.
+If you chose only one build at setup, only that build's files exist. The files for the other build appear if you later run `varshift setup build=both`.
 
 ## Watch it happen
 
-`varsight explain` runs one variant and prints every step, file and query. This is real output from the demo data, with the longer lists shortened:
+`varshift explain` runs one variant and prints every step, file and query. This is real output from the demo data, with the longer lists shortened:
 
 ```text
-$ varsight explain "BRAF V600E" build=hg19
+$ varshift explain "BRAF V600E" build=hg19
 
 Input: BRAF V600E
 
@@ -97,7 +97,7 @@ flowchart TD
 
 **2. Find the transcript.** For `BRAF V600E` the gene is looked up in `genes.sqlite`, which also resolves aliases such as ERBB1 to EGFR. Then `transcripts.hg19.sqlite` returns the transcripts for that gene, and MANE Select is tried first.
 
-**3. Check against the reference.** This is where a wrong input is caught. VarSight reads the actual bases from the reference file and compares them with what the input claims:
+**3. Check against the reference.** This is where a wrong input is caught. VarShift reads the actual bases from the reference file and compares them with what the input claims:
 
 | Input | What is compared |
 | - | - |
@@ -122,8 +122,8 @@ The reference is not in SQLite. It is a plain FASTA file opened as a memory map,
 
 - Every file opens read-only, in immutable mode with `query_only` on, so annotation can't change the data.
 - All values reach SQLite as parameters. A strange gene name can't change a query, and [a test reads the source to enforce it](../tests/test_security.py).
-- `varsight update` builds a new file beside the current one, tests it with known variants, and only then swaps it in. Annotation still running keeps the old file it already opened.
+- `varshift update` builds a new file beside the current one, tests it with known variants, and only then swaps it in. Annotation still running keeps the old file it already opened.
 
 ## The update notice
 
-Before annotating, VarSight reads one small file, `update_status.json`, in the data folder. That takes no measurable time and uses no network. If the saved answer is over a day old, a separate background process asks each source whether its file changed, and saves the answer for next time. Annotation doesn't wait for it. See [updates.md](updates.md).
+Before annotating, VarShift reads one small file, `update_status.json`, in the data folder. That takes no measurable time and uses no network. If the saved answer is over a day old, a separate background process asks each source whether its file changed, and saves the answer for next time. Annotation doesn't wait for it. See [updates.md](updates.md).

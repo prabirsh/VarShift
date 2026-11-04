@@ -13,12 +13,12 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from varsight import report
-from varsight.config import is_windows_mount
-from varsight.errors import InputError
-from varsight.links import build_links, link_names
-from varsight.output import ReportContext, ReportFolder, ScreenSink, _guard_cell, columns, flatten, format_of, open_file_sink, render_card
-from varsight.xlsx import XlsxWriter
+from varshift import report
+from varshift.config import is_windows_mount
+from varshift.errors import InputError
+from varshift.links import build_links, link_names
+from varshift.output import ExcelSink, ReportContext, ReportFolder, ScreenSink, _guard_cell, columns, flatten, format_of, open_file_sink, render_card
+from varshift.xlsx import XlsxWriter
 
 MAIN = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RECORD = {
@@ -237,6 +237,20 @@ class Workbook(Folder):
         self.assertTrue(row[2])
         self.assertTrue(row[3])
 
+    def test_past_excel_row_limit_the_run_finishes_and_the_summary_says_so(self):
+        self.path = self.root / "big.xlsx"
+        with mock.patch.object(ExcelSink, "row_limit", 3):
+            sink = open_file_sink(self.path, self.context)
+            for _ in range(5):
+                sink.write(with_priority(3, "Review"))
+            sink.close()
+        sheets = self._sheets()
+        self.assertEqual(len(sheets["All results"]), 3, "the header and two results fit")
+        summary = [row[0] for row in sheets["Summary"] if row]
+        self.assertTrue(any(text and text.startswith("3 results are not in All results") for text in summary), summary)
+        counts = {row[0]: row[1] for row in sheets["Summary"] if len(row) > 1}
+        self.assertEqual(counts["Review"], "5", "the counts still include every result")
+
 
 class HtmlReport(Folder):
     def _payload(self, path):
@@ -254,7 +268,7 @@ class HtmlReport(Folder):
 
     def test_the_data_is_inside_the_page(self):
         text, payload = self._payload(self._write([with_priority(1, "High")]))
-        self.assertNotIn("/*VARSIGHT_DATA*/", text)
+        self.assertNotIn("/*VARSHIFT_DATA*/", text)
         self.assertIsNotNone(payload, "report data block not found")
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["rows"][0]["g"], "BRAF")
@@ -281,6 +295,13 @@ class HtmlReport(Folder):
     def test_when_too_large_low_results_leave_first_and_the_page_says_so(self):
         with mock.patch.object(report, "MAX_ROWS", 3):
             path = self._write([with_priority(4, "Low"), with_priority(1, "High"), with_priority(4, "Low"), with_priority(2, "Medium"), with_priority(3, "Review")])
+        _, payload = self._payload(path)
+        self.assertEqual(sorted(row["p"] for row in payload["rows"]), [1, 2, 3])
+        self.assertEqual((payload["total"], payload["leftOut"]), (5, 2))
+
+    def test_when_full_a_high_result_still_replaces_a_lower_one(self):
+        with mock.patch.object(report, "MAX_ROWS", 3):
+            path = self._write([with_priority(3, "Review"), with_priority(3, "Review"), with_priority(2, "Medium"), with_priority(1, "High"), with_priority(4, "Low")])
         _, payload = self._payload(path)
         self.assertEqual(sorted(row["p"] for row in payload["rows"]), [1, 2, 3])
         self.assertEqual((payload["total"], payload["leftOut"]), (5, 2))

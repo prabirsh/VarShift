@@ -14,9 +14,9 @@ import tempfile
 import zlib
 from pathlib import Path
 
-from varsight.genome import Genome, write_fai
-from varsight.sequence import reverse_complement
-from varsight.transcripts import Transcript
+from varshift.genome import Genome, write_fai
+from varshift.sequence import reverse_complement
+from varshift.transcripts import Transcript
 
 UPSTREAM = "ACGTTGCAACGTAGCATCGA"
 UTR5 = "TTCCA"

@@ -1,4 +1,4 @@
-# VarSight demo: one description per line. Lines starting with # are skipped.
+# VarShift demo: one description per line. Lines starting with # are skipped.
 # All of these use public example variants. Nothing here comes from a patient.
 
 # Protein level, in the forms colleagues usually send

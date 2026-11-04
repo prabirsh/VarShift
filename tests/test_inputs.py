@@ -2,10 +2,10 @@
 
 import unittest
 
-from varsight.errors import InputError
-from varsight.hgvs import parse_dna_change, parse_protein_change
-from varsight.inputs import MAX_INPUT_LENGTH, parse_input
-from varsight.transcripts import TxPosition
+from varshift.errors import InputError
+from varshift.hgvs import parse_dna_change, parse_protein_change
+from varshift.inputs import MAX_INPUT_LENGTH, parse_input
+from varshift.transcripts import TxPosition
 
 
 class Protein(unittest.TestCase):
@@ -121,6 +121,15 @@ class Coding(unittest.TestCase):
     def test_an_insertion_needs_two_positions(self):
         with self.assertRaises(InputError):
             parse_dna_change("100insA")
+
+    def test_lower_case_bases_are_read_as_upper_case(self):
+        parsed = parse_input("NM_004333.6:c.1799t>a")
+        self.assertEqual((parsed.dna.kind, parsed.dna.ref, parsed.dna.alt), ("sub", "T", "A"))
+        self.assertEqual(parse_dna_change("100_101insat").alt, "AT")
+        self.assertEqual(parse_dna_change("100_102delinsat").alt, "AT")
+        self.assertEqual(parse_dna_change("68_69delag").ref, "AG")
+        self.assertEqual(parse_dna_change("100DUP").kind, "dup")
+        self.assertEqual(parse_dna_change("3901act[1]").ref, "ACT")
 
     def test_rubbish_is_rejected(self):
         for text in ("", "abc", "100", "100T>", "T>A", "100T>Z", "1_2_3del"):

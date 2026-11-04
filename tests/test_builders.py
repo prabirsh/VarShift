@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import write_fasta
-from varsight.errors import InputError, ReferenceMismatch, SetupError
-from varsight.genome import Genome
-from varsight.pipeline import builders
-from varsight.variant import normalize
+from varshift.errors import InputError, ReferenceMismatch, SetupError
+from varshift.genome import Genome
+from varshift.pipeline import builders
+from varshift.variant import normalize
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 

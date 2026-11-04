@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Install the VarSight command on Windows, for PowerShell and Command Prompt.
+    Install the VarShift command on Windows, for PowerShell and Command Prompt.
 
 .DESCRIPTION
     Needs only Python 3.10 or newer from python.org: no pip and no administrator rights.
-    It writes a small varsight launcher to a folder of yours, and with your agreement adds that folder
+    It writes a small varshift launcher to a folder of yours, and with your agreement adds that folder
     to your user PATH.
 
 .EXAMPLE
@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $BinDir = (Join-Path $env:LOCALAPPDATA 'VarSight\bin'),
+    [string] $BinDir = (Join-Path $env:LOCALAPPDATA 'VarShift\bin'),
     [switch] $NoDemo,
     [switch] $NoSetup,
     [switch] $NoPath,
@@ -44,13 +44,13 @@ function Find-Python {
 
 $python = Find-Python
 if (-not $python) {
-    Write-Error 'VarSight needs Python 3.10 or newer. Install it from https://www.python.org/downloads/ and tick "Add python.exe to PATH".'
+    Write-Error 'VarShift needs Python 3.10 or newer. Install it from https://www.python.org/downloads/ and tick "Add python.exe to PATH".'
 }
 Write-Output "Python: $(& $python -V) at $python"
 
 New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-$launcher = Join-Path $BinDir 'varsight.exe'
-$cmdLauncher = Join-Path $BinDir 'varsight.cmd'
+$launcher = Join-Path $BinDir 'varshift.exe'
+$cmdLauncher = Join-Path $BinDir 'varshift.cmd'
 Remove-Item -Path $launcher, $cmdLauncher -Force -ErrorAction SilentlyContinue
 & $python (Join-Path $repo 'scripts\windows\make_launcher.py') $BinDir "$repo\src" 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $launcher)) {
@@ -59,7 +59,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $launcher)) {
         '@echo off',
         'setlocal',
         "set `"PYTHONPATH=$repo\src`"",
-        "`"$python`" -m varsight %*"
+        "`"$python`" -m varshift %*"
     )
     Set-Content -Path $cmdLauncher -Value $lines -Encoding ASCII
     $launcher = $cmdLauncher
@@ -92,7 +92,7 @@ $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $onPath = ($userPath -split ';') -contains $BinDir
 if (-not $onPath -and -not $NoPath) {
     Write-Output ''
-    $answer = Read-Host "Add $BinDir to your PATH so varsight works from any window? yes or no [yes]"
+    $answer = Read-Host "Add $BinDir to your PATH so varshift works from any window? yes or no [yes]"
     if ($answer -eq '' -or $answer -match '^(y|yes)$') {
         [Environment]::SetEnvironmentVariable('Path', "$userPath;$BinDir", 'User')
         $env:Path = "$env:Path;$BinDir"
@@ -108,6 +108,6 @@ if (-not $NoSetup) {
 
 Write-Output ''
 Write-Output 'Installed. Next steps:'
-Write-Output '  varsight setup                               choose hg19, hg38 or both, and download'
-Write-Output '  varsight annotate "BRAF V600E" build=hg19    annotate a variant'
-Write-Output '  varsight help                                see every command'
+Write-Output '  varshift setup                               choose hg19, hg38 or both, and download'
+Write-Output '  varshift annotate "BRAF V600E" build=hg19    annotate a variant'
+Write-Output '  varshift help                                see every command'

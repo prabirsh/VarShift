@@ -7,12 +7,12 @@ import json
 import sys
 from importlib import resources
 
-from varsight.errors import SetupError
-from varsight.pipeline.fetch import Fetcher
+from varshift.errors import SetupError
+from varshift.pipeline.fetch import Fetcher
 
 
 def main() -> int:
-    catalog = json.loads(resources.files("varsight").joinpath("data/sources.json").read_text(encoding="utf-8"))
+    catalog = json.loads(resources.files("varshift").joinpath("data/sources.json").read_text(encoding="utf-8"))
     fetcher = Fetcher(catalog["allowed_hosts"])
     failed = 0
     for source_id, source in sorted(catalog["sources"].items()):

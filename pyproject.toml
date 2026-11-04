@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "varsight"
+name = "varshift"
 description = "Offline variant annotation for hg19 and hg38: p., c., g. or VCF in, checked annotation and reference links out."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,13 +28,13 @@ dependencies = []
 dynamic = ["version"]
 
 [project.scripts]
-varsight = "varsight.cli:main"
+varshift = "varshift.cli:main"
 
 [tool.setuptools.dynamic]
-version = { attr = "varsight.__version__" }
+version = { attr = "varshift.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-varsight = ["data/*.json", "data/*.html"]
+varshift = ["data/*.json", "data/*.html"]

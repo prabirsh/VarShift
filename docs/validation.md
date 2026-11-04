@@ -2,11 +2,11 @@
 
 This page says what was tested, how, what came out, and what hasn't been proven.
 
-**VarSight has not been validated for clinical use.** A laboratory using it for patient care must do its own validation.
+**VarShift has not been validated for clinical use.** A laboratory using it for patient care must do its own validation.
 
 ## Whole-genome sample
 
-On 2 November 2026, `varsight validate sample=20000` ran on a complete hg19 setup. It takes evenly spaced names from all of ClinVar, 20,027 in this run, so it is a much harder test than the 12 genes below. hg38 hasn't been measured this way, and no cross-build check was possible with one build installed.
+On 2 November 2026, `varshift validate sample=20000` ran on a complete hg19 setup. It takes evenly spaced names from all of ClinVar, 20,027 in this run, so it is a much harder test than the 12 genes below. hg38 hasn't been measured this way, and no cross-build check was possible with one build installed.
 
 The first run found that transcripts with a gap against hg19 were numbered wrongly. That was fixed the same day, and the same names were measured again. The full report, with examples from every remaining mismatch group, is in [validation-results/clinvar-hg19-whole-genome.md](validation-results/clinvar-hg19-whole-genome.md).
 
@@ -27,9 +27,9 @@ The first run found that transcripts with a gap against hg19 were numbered wrong
 
 1,231 of the RefSeq transcripts on hg19, 306 of them MANE Select, don't align to the genome base for base: the transcript has bases the genome lacks, or the reverse. RefSeq's exon rows hide this, sometimes by skipping two genome bases where the transcript has one extra, which looks like a tiny intron.
 
-VarSight used to count along those exon rows, so everything after a gap was off by its length. In ALMS1 `NM_001378454.1`, `chr2-73675519-A-G` was named `c.1862A>G` and `p.Tyr621Cys`, where ClinVar has `c.1865A>G` and `p.Tyr622Cys`. Worse, a c. name given as input could land a few bases away: of 25 such mismatches listed, 17 were refused and 8 were placed 3 bases off.
+VarShift used to count along those exon rows, so everything after a gap was off by its length. In ALMS1 `NM_001378454.1`, `chr2-73675519-A-G` was named `c.1862A>G` and `p.Tyr621Cys`, where ClinVar has `c.1865A>G` and `p.Tyr622Cys`. Worse, a c. name given as input could land a few bases away: of 25 such mismatches listed, 17 were refused and 8 were placed 3 bases off.
 
-Now VarSight reads RefSeq's own alignment, its `cDNA_match` rows, and numbers through it. Bases the genome lacks are kept as unknown, so later codons stay in frame. Along whole genes, ClinVar's exonic names now agree on 6,258 of 6,259 in ALMS1, 852 of 852 in SHANK3 and 200 of 200 in SRD5A2. A change that touches the gap itself gets the warning `transcript_gap_here` instead of a name. hg38 uses the same code, but hasn't been measured.
+Now VarShift reads RefSeq's own alignment, its `cDNA_match` rows, and numbers through it. Bases the genome lacks are kept as unknown, so later codons stay in frame. Along whole genes, ClinVar's exonic names now agree on 6,258 of 6,259 in ALMS1, 852 of 852 in SHANK3 and 200 of 200 in SRD5A2. A change that touches the gap itself gets the warning `transcript_gap_here` instead of a name. hg38 uses the same code, but hasn't been measured.
 
 ### What the mismatches are
 
@@ -44,8 +44,8 @@ Every mismatch left in the four `forward` tests, sorted by cause:
 | **Total** | **12** | **17** | **28** | **32** |
 
 - **Gaps, what's left:** two are ClinVar's own SHANK3 intronic names, which disagree with its exonic names on the same exon (`c.2301-2` next to `c.2336`). Three place the gap one base differently inside a repeat, which the alignment leaves open. The rest are transcripts where hg19 lacks a large part of the coding region, so they get a warning instead of a protein name.
-- **Same change, spelled differently:** ClinVar's `p.Glu43_Ser44insGlu` is VarSight's `p.Glu43dup`, its `p.Ser290delinsArgTer` is VarSight's `p.Ser290ArgfsTer2`, and its `c.1366-23dup` is VarSight's `c.1366-15dup`, moved to the 3' end of the repeat. Counting these as agreement gives 99.93% for c. indels and 99.60% for p. indels.
-- **No p. name:** VarSight refuses to translate a transcript with an in-frame stop on hg19 and flags it `cds_internal_stop`. This covers selenoproteins such as SELENON, and genes such as ACTN3.
+- **Same change, spelled differently:** ClinVar's `p.Glu43_Ser44insGlu` is VarShift's `p.Glu43dup`, its `p.Ser290delinsArgTer` is VarShift's `p.Ser290ArgfsTer2`, and its `c.1366-23dup` is VarShift's `c.1366-15dup`, moved to the 3' end of the repeat. Counting these as agreement gives 99.93% for c. indels and 99.60% for p. indels.
+- **No p. name:** VarShift refuses to translate a transcript with an in-frame stop on hg19 and flags it `cds_internal_stop`. This covers selenoproteins such as SELENON, and genes such as ACTN3.
 - **Results on these transcripts still carry `transcript_differs_from_genome`,** because the genome's bases can differ from the transcript's. Check any change close to the difference.
 
 Names on a different transcript version are scored separately in the report, 53 names here, for the reason given under [lower scores on other versions](#lower-scores-on-other-versions).
@@ -95,21 +95,21 @@ Not scored: 4 names using protein repeat notation, and names on other genes' tra
 
 ### What the mismatches are
 
-- **`forward_p_indel`:** mostly a frameshift ending within a few codons, where ClinVar writes `p.Ser205delinsThrTer` and VarSight writes `p.Ser205ThrfsTer2`. Same protein, different spelling. One case, `c.75_80dup`, gets no protein name from VarSight.
-- **`forward_c_indel`:** ClinVar names that weren't moved to the 3' end, `delins` where VarSight writes `inv`, and a deletion ClinVar names across two neighbouring exons (`c.8331_8332del`, which VarSight writes as `c.8330_8331del`).
+- **`forward_p_indel`:** mostly a frameshift ending within a few codons, where ClinVar writes `p.Ser205delinsThrTer` and VarShift writes `p.Ser205ThrfsTer2`. Same protein, different spelling. One case, `c.75_80dup`, gets no protein name from VarShift.
+- **`forward_c_indel`:** ClinVar names that weren't moved to the 3' end, `delins` where VarShift writes `inv`, and a deletion ClinVar names across two neighbouring exons (`c.8331_8332del`, which VarShift writes as `c.8330_8331del`).
 - **`consequence_snv`:** nearly all are PTEN variants upstream of where the hg19 annotation starts that transcript. ClinVar's term comes from a longer, older version. This is a data difference.
 - **One SNV in each test** has an ambiguous base in ClinVar (`c.4965C>R`).
 
 ### Lower scores on other versions
 
-ClinVar sometimes names an older transcript version than the one installed. Those groups are scored separately and score much lower (31% to 68%), because UTR numbering shifts between versions. **This is a real limit:** `c.-1060C>G` on `NM_000314.4` is a different base from the same name on `NM_000314.8`. VarSight flags this as `transcript_version_substituted`. Check any result carrying that flag.
+ClinVar sometimes names an older transcript version than the one installed. Those groups are scored separately and score much lower (31% to 68%), because UTR numbering shifts between versions. **This is a real limit:** `c.-1060C>G` on `NM_000314.4` is a different base from the same name on `NM_000314.8`. VarShift flags this as `transcript_version_substituted`. Check any result carrying that flag.
 
 ## Comparison with DRAGEN
 
 Run on local annotated VCFs from the author's samples. Only counts are recorded.
 
 - 16 variants fell inside the 12 genes, all indels, giving 114 names on RefSeq transcripts.
-- 113 of 114 c. names were the same. The other was a 796 bp deletion in a 3' UTR, placed 2 bases further 3' by VarSight.
+- 113 of 114 c. names were the same. The other was a 796 bp deletion in a 3' UTR, placed 2 bases further 3' by VarShift.
 - This is a very small check, because the installed sample only covers 12 genes.
 
 After a full setup, you can run the same comparison on your own files. It stays on your computer:
@@ -147,13 +147,23 @@ Run on 1 November 2026, from a copy holding only the files git would commit:
 | - | - |
 | `sh install.sh test=yes` on WSL Ubuntu | Installed, all tests passed, demo finished with 11 of 11 known variants |
 | `install.ps1 -Test` in PowerShell | The same on Windows, with 4 tests skipped because they cover POSIX file modes |
-| `install.bat` in Command Prompt | Installed. `varsight version` and `varsight demo` work there |
+| `install.bat` in Command Prompt | Installed. `varshift version` and `varshift demo` work there |
 | `pip install .` in a new Windows environment | Installed with no dependencies, and the report template is packaged |
 | About 50 command lines through the installed launcher, on both systems | Exit code and text checked for every command, including wrong input. `NM_004333.6:c.1799T>A` keeps its `>` from PowerShell and Command Prompt |
 | `workers=2` against `workers=1` | Byte-for-byte the same file |
 | `tools/check_sources.py` | All 38 download sources answered, within their size limits |
 
 Testing against the real Cancer Hotspots file found a bug the small sample couldn't show: a wide in-frame indel region hid the single-residue BRAF V600 row. It is fixed, and those two rows are now in the test sample.
+
+Run on 4 November 2026, on the full hg19 data, Python 3.12 on Windows and 3.14 on WSL:
+
+| Check | Result |
+| - | - |
+| `install.ps1 -BinDir DIR -NoPath -NoSetup`, then `varshift setup build=hg19` | Installed in 1 h 34 min, 5 of 5 known variants passed, no downloads left behind |
+| `update check`, `update`, `rollback`, `doctor verify` | Worked. The rebuilt gene tables were byte-identical to the old ones, which showed that ClinGen's file only looked new: fixed, see the changelog |
+| Every input form, list, VCF and `.vcf.gz` with `workers=2` | The hotspot variants landed on their published positions, and `workers=2` gave the same file as one process |
+| `sh install.sh bin=DIR demo=no setup=no` in WSL, reading the folder PowerShell built | Each command took 1 to 2 s, and the VCF results were byte-identical to the Windows run |
+| The full unit tests | 393 passed on Windows (5 skipped) and on WSL (3 skipped) |
 
 ## Speed and memory
 
@@ -163,14 +173,14 @@ See [benchmarks](benchmarks.md).
 
 | What | Status | How to close it |
 | - | - | - |
-| Transcripts with a gap against the genome | Fixed on hg19 and measured. hg38 uses the same code but hasn't been measured | `varsight validate` after an hg38 setup |
-| Whole-genome accuracy on hg38 | hg19 is measured on a 20,027-name sample, but hg38 only on 12 genes | `varsight validate sample=20000 report=validation.md` after an hg38 setup |
-| Full setup | hg19 ran from start to the self-test on 2 November 2026, natively on Windows, and all 5 known variants passed. hg38, both builds together, and a full build inside WSL haven't been run | Run `varsight setup` |
+| Transcripts with a gap against the genome | Fixed on hg19 and measured. hg38 uses the same code but hasn't been measured | `varshift validate` after an hg38 setup |
+| Whole-genome accuracy on hg38 | hg19 is measured on a 20,027-name sample, but hg38 only on 12 genes | `varshift validate sample=20000 report=validation.md` after an hg38 setup |
+| Full setup | hg19 ran from start to the self-test on 2 November 2026, natively on Windows, and all 5 known variants passed. It ran again on 4 November 2026 with Python 3.12, followed by a real update and rollback. hg38, both builds together, and a full build inside WSL haven't been run | Run `varshift setup` |
 | Real setup time and size | [Measured for hg19](benchmarks.md#setup-time). Estimates for hg38 | The report in `reports/` records them |
 | Current Pfam positions | Positions come from Pfam 37.0. [What that costs](data-sources.md#core-databases) | A newer human-only file from Pfam |
 | GENCODE and the advanced database builders | Tested on samples of real files only. See [how much of this has been tested](data-sources.md#how-much-of-this-has-been-tested) | Run them on full files |
 | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | Written from documented columns, without a real file | Add your own file. It stops with a clear message if the columns differ |
-| Python 3.10 to 3.13 | Not run yet | CI, once on GitHub |
+| Python 3.10, 3.11 and 3.13 | Not run yet. 3.12 has run the tests and a full hg19 setup on Windows | CI, once on GitHub |
 | Excel itself | Checked with a separate reader (openpyxl): five sheets in order, filters, frozen headers, colours and links, with no warnings. Not opened in Microsoft Excel | Open a result in Excel |
 | HTML report | Tested in Chromium: filters, search, sort, details panel, keyboard, TSV export, light and dark, phone width. Not tested in Firefox or Safari | Open one there |
 | Link formats | See [the table](data-sources.md#reference-links); VarSome, OMIM and UCSC unconfirmed | Click them in a normal browser |

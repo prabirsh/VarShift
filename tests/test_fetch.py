@@ -12,9 +12,9 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
-from varsight.errors import SetupError
-from varsight.pipeline import fetch
-from varsight.pipeline.fetch import Fetcher, duration_label, md5_from_list
+from varshift.errors import SetupError
+from varshift.pipeline import fetch
+from varshift.pipeline.fetch import Fetcher, duration_label, md5_from_list
 
 BODY = b"".join(b"line %06d of the source file\n" % i for i in range(60000))
 GZIPPED = gzip.compress(BODY, mtime=0)
@@ -155,19 +155,19 @@ class Downloads(unittest.TestCase):
             test_gzip.assert_called_once()
 
     def test_a_long_download_says_how_far_it_has_got(self):
-        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varsight.fetch", "INFO") as logs:
+        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varshift.fetch", "INFO") as logs:
             self.fetcher.download(f"{self.base}/plain.txt", self.root / "k", 10**8)
         self.assertRegex(logs.output[0], r"plain\.txt: \d+% of 2 MB, \d.*/s, about .* left")
 
     def test_a_long_stream_says_how_far_it_has_got(self):
-        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varsight.fetch", "INFO") as logs:
+        with mock.patch.object(fetch, "PROGRESS_EVERY", 0), self.assertLogs("varshift.fetch", "INFO") as logs:
             with self.fetcher.stream(f"{self.base}/plain.txt", 10**8) as stream:
                 while stream.read(65536):
                     pass
         self.assertRegex(logs.output[-1], r"plain\.txt: 100% of 2 MB")
 
     def test_a_short_transfer_stays_quiet(self):
-        with self.assertNoLogs("varsight.fetch", "INFO"):
+        with self.assertNoLogs("varshift.fetch", "INFO"):
             self.fetcher.download(f"{self.base}/plain.txt", self.root / "l", 10**8)
 
     def test_a_file_over_its_size_limit_is_refused(self):

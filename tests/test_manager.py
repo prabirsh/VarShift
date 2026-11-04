@@ -5,23 +5,26 @@ import hashlib
 import http.server
 import json
 import logging
+import os
 import shutil
 import tempfile
 import threading
 import time
 import unittest
+from datetime import datetime, timezone
+from email.utils import format_datetime
 from pathlib import Path
 from unittest import mock
 
 from tests.helpers import tiny_bigwig
-from varsight.annotate import Annotator
-from varsight.errors import DataError, SetupError
-from varsight.pipeline import manager as manager_module
-from varsight.pipeline import updatecheck
-from varsight.pipeline.fetch import Fetcher
-from varsight.pipeline.manager import DataManager, load_catalog
-from varsight.store import DataStore
-from varsight.updates import read_status
+from varshift.annotate import Annotator
+from varshift.errors import DataError, SetupError
+from varshift.pipeline import manager as manager_module
+from varshift.pipeline import updatecheck
+from varshift.pipeline.fetch import Fetcher
+from varshift.pipeline.manager import DataManager, load_catalog
+from varshift.store import DataStore
+from varshift.updates import read_status
 
 DEMO_SOURCES = Path(__file__).resolve().parents[1] / "demo" / "sources"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -76,7 +79,7 @@ class CoreSources(unittest.TestCase):
 
 class Reporting(unittest.TestCase):
     def test_a_long_build_keeps_saying_it_is_going(self):
-        with mock.patch.object(manager_module, "STILL_GOING_EVERY", 0.01), self.assertLogs("varsight.data", "INFO") as logs:
+        with mock.patch.object(manager_module, "STILL_GOING_EVERY", 0.01), self.assertLogs("varshift.data", "INFO") as logs:
             with manager_module._still_going("building something"):
                 time.sleep(0.1)
         self.assertIn("still building something", logs.output[0])
@@ -215,6 +218,23 @@ class Lifecycle(WithServer):
         self.assertTrue(all(i.action == "none" for i in items), [(i.artifact, i.action, i.changed) for i in items])
         self.assertEqual(self.manager.load_manifest()["files"]["clinvar.hg19"]["built_at"], before)
 
+    def test_5b_a_file_made_on_request_is_not_new_every_time(self):
+        # ClinGen sends no ETag and dates its gene-validity file with the time of the request.
+        manager = self._make_manager()
+        real_head = manager.fetcher.head
+
+        def head(url):
+            remote = real_head(url)
+            if url.endswith("/clingen_validity.csv.gz"):
+                remote.etag, remote.last_modified = "", format_datetime(datetime.now(timezone.utc), usegmt=True)
+            return remote
+
+        with mock.patch.object(manager.fetcher, "head", side_effect=head):
+            items = {i.artifact: i for i in manager.check_updates()}
+        self.assertEqual(items["genes"].changed, [])
+        self.assertFalse(manager_module._just_now("Mon, 26 Oct 2026 13:51:56 GMT"))
+        self.assertFalse(manager_module._just_now(""))
+
     def test_6_new_clinvar_is_applied_automatically_then_can_be_rolled_back(self):
         rows_before = self._clinvar_rows()
         store = DataStore(self.data)
@@ -306,6 +326,35 @@ class Lifecycle(WithServer):
             self.assertEqual(bad, ["civic.sqlite"])
         finally:
             target.write_bytes(original)
+
+    def test_rollback_that_fails_part_way_changes_nothing(self):
+        store = DataStore(self.data)
+        ref = store.genome("hg19").fetch("chr7", 140500099, 140500100)
+        store.close()
+        alt = "A" if ref != "A" else "C"
+        self._rewrite_clinvar("hg19", append=f"7\t140500100\t999999998\t{ref}\t{alt}\t.\t.\tALLELEID=2;CLNSIG=Benign;GENEINFO=BRAF:673\n")
+        manager = self._make_manager()
+        try:
+            items = {i.artifact: i for i in manager.update()}
+            self.assertEqual(items["clinvar.hg19"].action, "updated", items["clinvar.hg19"].detail)
+            rows_now = self._clinvar_rows()
+            real_replace, calls = os.replace, []
+
+            def in_use_on_the_second_move(source, target):
+                calls.append(source)
+                if len(calls) == 2:
+                    raise PermissionError("the file is in use by another process")
+                return real_replace(source, target)
+
+            with mock.patch("varshift.pipeline.manager.os.replace", side_effect=in_use_on_the_second_move):
+                with self.assertRaises(DataError):
+                    manager.rollback()
+            self.assertEqual(self._clinvar_rows(), rows_now, "the newer data must still be in place")
+            self.assertTrue(all(ok for _, ok, _ in manager.verify()), "files and manifest must still agree")
+            self.assertIn("clinvar.hg19", manager.rollback(), "the snapshot must still be usable")
+            self.assertEqual(self._clinvar_rows(), rows_now - 1)
+        finally:
+            shutil.copy(DEMO_SOURCES / "clinvar.hg19.vcf.gz", self.www / "clinvar.hg19.vcf.gz")
 
     def test_rollback_with_nothing_saved_says_so(self):
         empty = tempfile.TemporaryDirectory()
