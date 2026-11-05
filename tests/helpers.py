@@ -9,6 +9,7 @@ so a correct engine must give identical c. and p. names for both.
 
 from __future__ import annotations
 
+import io
 import struct
 import tempfile
 import zlib
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from varshift.genome import Genome, write_fai
 from varshift.sequence import reverse_complement
+from varshift.term import Terminal
 from varshift.transcripts import Transcript
 
 UPSTREAM = "ACGTTGCAACGTAGCATCGA"
@@ -77,6 +79,38 @@ class ToyGene:
     def close(self) -> None:
         self.genome.close()
         self._folder.cleanup()
+
+
+class ScriptedTerminal(Terminal):
+    """A person at an interactive terminal, typing the given answers in order. Everything shown is kept.
+
+    An answer that is an exception is raised at that point, the way Ctrl+C would be. pasted holds the
+    positions of answers that arrive pasted together with the answer before them.
+    """
+
+    def __init__(self, answers=(), pasted=(), color: bool = False, width: int = 100):
+        super().__init__(interactive=True, color=color, width=width, stdin=io.StringIO(), stdout=io.StringIO())
+        self.answers = list(answers)
+        self.pasted = set(pasted)
+        self.position = 0
+
+    @property
+    def output(self) -> str:
+        return self.stdout.getvalue()
+
+    def ask(self, prompt: str) -> str | None:
+        self.write(prompt)
+        if self.position >= len(self.answers):
+            return None
+        answer = self.answers[self.position]
+        self.position += 1
+        if isinstance(answer, BaseException):
+            raise answer
+        self.write(f"{answer}\n")
+        return answer
+
+    def input_waiting(self) -> bool:
+        return self.position < len(self.answers) and self.position in self.pasted
 
 
 def tiny_bigwig() -> bytes:

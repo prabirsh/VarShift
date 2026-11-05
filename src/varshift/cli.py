@@ -13,12 +13,14 @@ from pathlib import Path
 from . import __version__
 from .advanced import ACCEPT, ALIAS, DATABASES, DOWNLOAD, OWN_FILE, get_database
 from .annotate import Annotator
-from .batch import annotate_list, annotate_vcf, vcf_columns
+from .answer import Answer, choice_table, decide, error_line, render_answer, render_choices, summary_line
+from .batch import annotate_lines, annotate_list, annotate_vcf, split_queries, vcf_columns
 from .commandline import COMMANDS, Values, parse, render_help
 from .config import default_data_dir, is_windows_mount, load_settings, resolve_data_dir, save_setting
 from .errors import InputError, ResolveError, SetupError, VarShiftError
-from .output import ReportContext, ReportFolder, ScreenSink, format_of, open_file_sink
+from .output import ReportContext, ReportFolder, ScreenSink, format_of, open_file_sink, render_card
 from .store import DataStore
+from .term import Terminal
 from .updates import check_in_background, clear_applied, notice_lines, read_status
 from .vcf import looks_like_vcf
 
@@ -72,6 +74,11 @@ def _version(values: Values) -> int:
 # annotate
 def _annotate(values: Values) -> int:
     source = values.positional
+    mode = _mode(values)
+    for name in ("show", "links"):
+        if values.get(name) not in (None, "all"):
+            raise InputError(f"{name}= takes all, not {values.get(name)!r}")
+    term = _terminal(values)
     data_dir = resolve_data_dir(values.get("data"))
     store = DataStore(data_dir)
     try:
@@ -86,16 +93,28 @@ def _annotate(values: Values) -> int:
             notices=[line.strip() for line in notices],
         )
         annotator = Annotator(store, all_transcripts=values.get("transcripts") == "all")
+        build, gene = values.get("build"), values.get("gene") or ""
         if looks_like_vcf(source):
             context.prefix = vcf_columns(Path(source))
             sink = _sink_for_file(source, values, context)
-            counts = annotate_vcf(annotator, Path(source), sink, values.get("build"), _worker_count(values, source))
+            counts = annotate_vcf(annotator, Path(source), sink, build, _worker_count(values, source), mode)
             return _finish_file(sink, counts)
         if Path(source).is_file():
             sink = _sink_for_file(source, values, context)
-            counts = annotate_list(annotator, Path(source), sink, values.get("build"), values.get("gene") or "")
+            counts = annotate_list(annotator, Path(source), sink, build, gene, mode)
             return _finish_file(sink, counts)
-        records = annotator.annotate_text(source, values.get("build"), values.get("gene") or "")
+        on_screen = not values.get("out") and (values.get("format") or "card") == "card"
+        queries = split_queries(source)
+        if len(queries) > 1 and on_screen:
+            return _show_queries(annotator, queries, values, mode, term)
+        if len(queries) > 1:
+            # Several queries are handled as a list file with these lines, so one failing doesn't stop the rest.
+            sink = _sink_for_single(values, context)
+            counts = annotate_lines(annotator, enumerate(queries, 1), sink, build, gene, mode, label="query")
+            return _finish_file(sink, counts)
+        records = annotator.annotate_text(queries[0] if queries else source, build, gene, mode)
+        if on_screen:
+            return _show_answer(records, values, mode, term)
         sink = _sink_for_single(values, context)
         for record in records:
             sink.write(record)
@@ -105,6 +124,74 @@ def _annotate(values: Values) -> int:
         return 0
     finally:
         store.close()
+
+
+_MODES = {"tumour": "tumour", "tumor": "tumour", "inherited": "inherited", "none": None}
+
+
+def _mode(values: Values) -> str | None:
+    """mode=, else the saved setting. None when there is no mode."""
+    given = values.get("mode") or load_settings().get("mode") or "none"
+    if given.lower() not in _MODES:
+        raise InputError(f"mode must be tumour, inherited or none, not {given!r}")
+    return _MODES[given.lower()]
+
+
+def _terminal(values: Values) -> Terminal:
+    """The screen VarShift writes to, and asks on only when a person is there. Tests patch this."""
+    setting = values.get("color") or load_settings().get("color") or "auto"
+    try:
+        return Terminal.detect(setting)
+    except ValueError:
+        raise InputError(f"color must be auto, yes or no, not {setting!r}") from None
+
+
+def _show_answer(records: list[dict], values: Values, mode: str | None, term: Terminal) -> int:
+    """One description on the screen: the best match's card, or a choice."""
+    if values.get("show") == "all":
+        for record in records:
+            term.write(render_card(record) + "\n")
+        return 0
+    answer = decide(records)
+    links_all = values.get("links") == "all"
+    if answer.kind != "choice":
+        term.write(render_answer(answer, term, mode, links_all))
+        return 0
+    if not term.interactive:
+        term.write(render_choices(answer, term))
+        term.write("Each is a different variant. To see all in full: show=all\n")
+        return 0
+    heading, rows = choice_table(answer, term)
+    if len(rows) < len(answer.records):
+        heading += f"\n(the first {len(rows)} of {len(answer.records)}; a more specific description narrows them)"
+    picked = term.choose(heading, rows, allow_all=True)
+    if picked is None:
+        print("Nothing chosen.", file=sys.stderr)
+        return 1
+    for index in picked:
+        record = answer.records[index]
+        chosen = Answer(answer.raw, answer.read_as, "single", [record], best=record)
+        term.write("\n" + render_answer(chosen, term, mode, links_all))
+    return 0
+
+
+def _show_queries(annotator: Annotator, queries: list[str], values: Values, mode: str | None, term: Terminal) -> int:
+    """Several descriptions on the screen: one numbered line each, then how to see one in full."""
+    build, gene = values.get("build"), values.get("gene") or ""
+    width = min(max(len(query) for query in queries), 30)
+    example = None
+    for number, text in enumerate(queries, 1):
+        try:
+            answer = decide(annotator.annotate_text(text, build, gene, mode))
+        except VarShiftError as exc:
+            term.write(error_line(number, text, str(exc), term, width) + "\n")
+            continue
+        example = example or text
+        term.write(summary_line(number, answer, term, width) + "\n")
+    words = "".join(f" {name}={values.get(name)}" for name in ("build", "gene", "mode") if values.get(name))
+    term.write(f'To see one in full: varshift annotate "{example or queries[0]}"{words}\n')
+    term.write("To save them all, with every link: add out=results.xlsx\n")
+    return 0
 
 
 def _worker_count(values: Values, source: str) -> int:

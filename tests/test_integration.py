@@ -9,8 +9,12 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
+from tests.helpers import ScriptedTerminal
+from varshift import cli
 from varshift.annotate import Annotator
+from varshift.batch import annotate_lines
 from varshift.cli import main
 from varshift.config import is_windows_mount
 from varshift.errors import DataError, InputError, ReferenceMismatch, ResolveError
@@ -81,6 +85,18 @@ class KnownVariant(WithData):
             with self.subTest(text=text):
                 self.assertTrue(self.one(text, "hg19")["candidate"]["in_clinvar"])
 
+    def test_results_carry_the_answer_fields(self):
+        record = self.one("NM_004333.6:c.1799T>A", "hg19")
+        self.assertEqual(record["input"]["answer"], "single")
+        self.assertEqual(record["input"]["read_as"], "")
+        self.assertIn("mode", record["input"])
+        self.assertEqual(record["candidate"]["bases_changed"], 1)
+        self.assertIn("best", record["candidate"])
+        self.assertIn("why", record["candidate"])
+        changed = {r["variant"]["hg19"]["key"]: r["candidate"]["bases_changed"] for r in self.annotator.annotate_text("BRAF V600E", "hg19")}
+        self.assertEqual(changed["chr7-140453136-A-T"], 1)
+        self.assertEqual(changed["chr7-140453135-CA-TT"], 2)
+
     def test_every_input_form_reaches_the_same_variant(self):
         for text in (
             "BRAF V600E",
@@ -123,6 +139,215 @@ class KnownVariant(WithData):
         evidence = self.one("BRAF V600E", "hg19")["evidence"]
         self.assertTrue(evidence["civic"], "CIViC has BRAF V600E")
         self.assertGreater(evidence["civic"][0]["evidence_items"], 0)
+
+
+class Collect:
+    """A writer that keeps what it is given."""
+
+    def __init__(self):
+        self.records = []
+
+    def write(self, record, prefix=None):
+        self.records.append(record)
+
+
+class TidiedInput(WithData):
+    def test_a_slip_is_fixed_and_the_reading_is_recorded(self):
+        for typed, read_as in (
+            ("braf val600glu", "BRAF Val600Glu"),
+            ("BRAF c.1799T-A", "BRAF c.1799T>A"),
+            ("NM_004333.6:1799T>A", "NM_004333.6:c.1799T>A"),
+            ("chr7:140453136A>T", "chr7:g.140453136A>T"),
+        ):
+            with self.subTest(typed=typed):
+                record = self.one(typed, "hg19")
+                self.assertEqual(record["variant"]["hg19"]["key"], "chr7-140453136-A-T")
+                self.assertEqual(record["input"]["raw"], typed)
+                self.assertEqual(record["input"]["read_as"], read_as)
+                self.assertTrue(record["input"]["read_as_notes"])
+
+    def test_text_that_reads_is_left_alone(self):
+        for text in ("BRAF V600E", "NM_004333.6:c.1799T>A", "chr7-140453136-A-T", "rs113488022"):
+            with self.subTest(text=text):
+                source = self.one(text, "hg19")["input"]
+                self.assertEqual(source["read_as"], "")
+                self.assertEqual(source["read_as_notes"], [])
+
+    def test_the_gene_symbol_is_written_as_hgnc_writes_it(self):
+        source = self.one("braf V600E", "hg19")["input"]
+        self.assertEqual(source["raw"], "braf V600E")
+        self.assertEqual(source["read_as"], "BRAF V600E")
+        self.assertEqual(source["read_as_notes"], ["gene symbol written as HGNC writes it"])
+
+    def test_an_alias_is_named(self):
+        for typed, read_as in (("KRAS2 G12D", "KRAS G12D (KRAS2 is an alias)"), ("kras2 g12d", "KRAS G12D (kras2 is an alias)")):
+            with self.subTest(typed=typed):
+                record = self.one(typed, "hg19")
+                self.assertEqual(record["gene"]["symbol"], "KRAS")
+                self.assertEqual(record["input"]["read_as"], read_as)
+
+    def test_an_alias_given_with_gene_leaves_the_text_alone(self):
+        source = self.annotator.annotate_text("G12D", "hg19", gene="KRAS2")[0]["input"]
+        self.assertEqual(source["read_as"], "")
+
+    def test_one_query_does_not_carry_the_last_gene_into_the_next(self):
+        self.one("KRAS2 G12D", "hg19")
+        self.assertEqual(self.one("chr7-140453136-A-T", "hg19")["input"]["read_as"], "")
+
+    def test_the_mode_is_recorded(self):
+        self.assertEqual(self.annotator.annotate_text("BRAF V600E", "hg19", mode="tumour")[0]["input"]["mode"], "tumour")
+        self.assertIsNone(self.one("BRAF V600E", "hg19")["input"]["mode"])
+
+    def test_a_list_keeps_the_reading_of_a_line_that_still_fails(self):
+        writer = Collect()
+        counts = annotate_lines(self.annotator, [(1, "BRAF(V600)"), (2, "braf v600e")], writer, "hg19", mode="inherited")
+        self.assertEqual((counts["lines"], counts["errors"]), (2, 1))
+        failed, first = writer.records[0], writer.records[1]
+        self.assertTrue(failed["error"])
+        self.assertEqual(failed["input"]["raw"], "BRAF(V600)")
+        self.assertEqual(failed["input"]["read_as"], "BRAF V600")
+        self.assertEqual(failed["input"]["mode"], "inherited")
+        self.assertEqual(first["input"]["read_as"], "BRAF V600E")
+        self.assertEqual(first["input"]["mode"], "inherited")
+
+
+class NoTyping:
+    """Standard input that says it is a terminal but must never be read."""
+
+    def isatty(self):
+        return True
+
+    def fileno(self):
+        raise OSError("not a real stream")
+
+    def read(self, *args):
+        raise AssertionError("standard input was read")
+
+    readline = read
+
+
+class ScreenAnswers(WithData):
+    """What varshift annotate prints for one description, or a ; list, with no out= or format=."""
+
+    def _cli(self, *args, terminal=None):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(contextlib.redirect_stdout(stdout))
+            stack.enter_context(contextlib.redirect_stderr(stderr))
+            stack.enter_context(mock.patch("sys.stdin", NoTyping()))
+            if terminal is not None:
+                stack.enter_context(mock.patch.object(cli, "_terminal", return_value=terminal))
+            code = main(list(args) + [f"data={self.data}"])
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_one_clear_answer_with_why(self):
+        code, out, err = self._cli("annotate", "BRAF V600E", "build=hg19")
+        self.assertEqual(code, 0, err)
+        self.assertIn("Why this", out)
+        self.assertIn("chr7-140453136-A-T", out.splitlines()[0])
+        self.assertLess(len(out.splitlines()), 25)
+        self.assertNotIn("candidate 2 of 2", out)
+        self.assertNotIn("\x1b", out)
+
+    def test_show_all_prints_every_candidate_in_full(self):
+        code, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "show=all")
+        self.assertEqual(code, 0)
+        self.assertIn("candidate 2 of 2", out)
+
+    def test_a_choice_is_listed_without_waiting_when_no_one_can_answer(self):
+        records = self.annotator.annotate_text("rs113488022", "hg19")
+        code, out, err = self._cli("annotate", "rs113488022", "build=hg19")
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"covers {len(records)} different variants", out)
+        for record in records:
+            self.assertIn(record["variant"]["hg19"]["key"], out)
+        self.assertIn("Each is a different variant. To see all in full: show=all", out)
+
+    def test_a_choice_made_at_the_terminal_shows_that_variant(self):
+        records = self.annotator.annotate_text("rs113488022", "hg19")
+        terminal = ScriptedTerminal(answers=["2"])
+        code, _, err = self._cli("annotate", "rs113488022", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 0, err)
+        cards = [line for line in terminal.output.splitlines() if line.startswith("rs113488022  ->")]
+        self.assertEqual(len(cards), 1, terminal.output)
+        self.assertIn(records[1]["variant"]["hg19"]["key"], cards[0])
+        self.assertIn("Choose 1 to 2, a for all, or Enter for the first", terminal.output)
+
+    def test_all_can_be_chosen(self):
+        terminal = ScriptedTerminal(answers=["a"])
+        self.assertEqual(self._cli("annotate", "rs113488022", "build=hg19", terminal=terminal)[0], 0)
+        self.assertEqual(len([line for line in terminal.output.splitlines() if line.startswith("rs113488022  ->")]), 2)
+
+    def test_no_answer_at_the_end_of_input_chooses_nothing(self):
+        terminal = ScriptedTerminal(answers=[])
+        code, _, err = self._cli("annotate", "rs113488022", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 1)
+        self.assertIn("Nothing chosen", err)
+
+    def test_the_mode_is_checked_and_recorded(self):
+        code, _, err = self._cli("annotate", "BRAF V600E", "build=hg19", "mode=bogus")
+        self.assertEqual(code, 1)
+        for word in ("tumour", "inherited", "none"):
+            self.assertIn(word, err)
+        for given, recorded in (("tumour", "tumour"), ("tumor", "tumour"), ("inherited", "inherited"), ("none", None)):
+            with self.subTest(given=given):
+                code, out, err = self._cli("annotate", "BRAF V600E", "build=hg19", f"mode={given}", "format=json")
+                self.assertEqual(code, 0, err)
+                self.assertEqual(json.loads(out)[0]["input"]["mode"], recorded)
+
+    def test_the_mode_chooses_the_links_on_the_card(self):
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "mode=tumour")
+        self.assertIn("OncoKB", out.split("Check it")[1])
+
+    def test_colour_is_checked_and_only_used_when_asked(self):
+        code, _, err = self._cli("annotate", "BRAF V600E", "build=hg19", "color=bogus")
+        self.assertEqual(code, 1)
+        for word in ("auto", "yes", "no"):
+            self.assertIn(word, err)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("NO_COLOR", None)
+            _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "color=yes")
+        self.assertIn("\x1b[1;31mHIGH", out)
+        with mock.patch.dict(os.environ, {"NO_COLOR": "1"}):
+            self.assertNotIn("\x1b", self._cli("annotate", "BRAF V600E", "build=hg19", "color=yes")[1])
+
+    def test_links_all_and_show_take_only_all(self):
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "links=all")
+        self.assertIn("NCBI RefSeq", out)
+        self.assertNotIn("links=all", out)
+        for word in ("show=some", "links=few"):
+            with self.subTest(word=word):
+                code, _, err = self._cli("annotate", "BRAF V600E", "build=hg19", word)
+                self.assertEqual(code, 1)
+                self.assertIn("all", err)
+
+    def test_several_queries_get_one_line_each(self):
+        code, out, err = self._cli("annotate", "BRAF V600E; KRAS G12D; NOTAGENE V600E", "build=hg19")
+        self.assertEqual(code, 0, err)
+        lines = out.splitlines()
+        self.assertTrue(lines[0].lstrip().startswith("1  BRAF V600E"), lines[0])
+        self.assertIn("chr7-140453136-A-T", lines[0])
+        self.assertTrue(lines[1].lstrip().startswith("2  KRAS G12D"), lines[1])
+        self.assertTrue(lines[2].lstrip().startswith("3  NOTAGENE V600E"), lines[2])
+        self.assertIn("could not annotate", lines[2])
+        self.assertEqual(lines[0].index("chr7"), lines[1].index("chr12"))
+        self.assertIn('varshift annotate "BRAF V600E" build=hg19', out)
+        self.assertIn("out=results.xlsx", out)
+
+    def test_a_list_file_and_a_vcf_record_the_mode(self):
+        listing = Path(self.folder.name) / "modes.txt"
+        listing.write_text("BRAF V600E\nNOTAGENE V600E\n", encoding="utf-8")
+        target = Path(self.folder.name) / "modes.jsonl"
+        code, _, err = self._cli("annotate", str(listing), "build=hg19", "mode=inherited", f"out={target}", "replace")
+        self.assertEqual(code, 0, err)
+        rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual({row["input"]["mode"] for row in rows}, {"inherited"})
+        tsv = Path(self.folder.name) / "modes.tsv"
+        code, _, err = self._cli("annotate", str(DEMO / "demo.hg19.vcf"), "mode=tumour", f"out={tsv}", "replace")
+        self.assertEqual(code, 0, err)
+        lines = tsv.read_text(encoding="utf-8").splitlines()
+        column = lines[0].split("\t").index("mode")
+        self.assertEqual({line.split("\t")[column] for line in lines[1:]}, {"tumour"})
 
 
 class OtherClasses(WithData):
@@ -244,7 +469,7 @@ class FileRuns(WithData):
     def test_single_variant_prints_a_card_by_default(self):
         code, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19")
         self.assertEqual(code, 0)
-        for expected in ("Priority    High", "NM_004333", "13961", "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"):
+        for expected in ("HIGH", "Why this", "NM_004333", "13961", "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"):
             self.assertIn(expected, out)
 
     def test_dashes_typed_out_of_habit_still_work(self):
@@ -331,6 +556,33 @@ class FileRuns(WithData):
         rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
         self.assertTrue(any(r.get("error") for r in rows))
         self.assertTrue(any(r.get("gene", {}).get("symbol") == "TP53" for r in rows if "gene" in r))
+
+    def test_several_queries_separated_by_semicolons_run_as_a_list(self):
+        target = self.root / "x.tsv"
+        code, _, err = self._cli("annotate", "BRAF V600E; KRAS G12D", "build=hg19", f"out={target}")
+        self.assertEqual(code, 0, err)
+        lines = target.read_text(encoding="utf-8").splitlines()
+        header = lines[0].split("\t")
+        rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
+        self.assertEqual({r["input"] for r in rows}, {"BRAF V600E", "KRAS G12D"})
+        self.assertEqual({r["gene"] for r in rows}, {"BRAF", "KRAS"})
+        self.assertIn("lines: 2", err)
+
+    def test_a_failing_query_in_a_semicolon_list_does_not_stop_the_others(self):
+        with self.assertLogs("varshift", "WARNING") as logged:
+            code, out, err = self._cli("annotate", "BRAF(V600); TP53 R175H", "build=hg19", "format=jsonl")
+        self.assertEqual(code, 0, err)
+        rows = [json.loads(line) for line in out.splitlines()]
+        self.assertEqual(rows[0]["input"]["read_as"], "BRAF V600")
+        self.assertTrue(rows[0]["error"])
+        self.assertEqual(rows[1]["gene"]["symbol"], "TP53")
+        self.assertIn("lines: 2, errors: 1", err)
+        self.assertIn("query 1: ", "\n".join(logged.output))
+
+    def test_one_query_with_a_trailing_semicolon_is_one_query(self):
+        code, out, err = self._cli("annotate", "BRAF V600E;", "build=hg19", "format=json")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)[0]["variant"]["hg19"]["key"], "chr7-140453136-A-T")
 
     def test_status_and_doctor_and_selftest(self):
         self.assertEqual(self._cli("status")[0], 0)

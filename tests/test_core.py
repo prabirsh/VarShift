@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import CONTIG, FORWARD, ToyGene, write_fasta
-from varshift.batch import _vcf_build
+from varshift.batch import _vcf_build, split_queries
 from varshift.builds import (
     canonical_contig,
     contig_accession,
@@ -37,6 +37,24 @@ class VcfBuild(unittest.TestCase):
             _vcf_build(reader, "hg19")
         self.assertEqual(_vcf_build(reader, "hg38"), "hg38")
         self.assertEqual(_vcf_build(reader, None), "hg38")
+
+
+class SplitQueries(unittest.TestCase):
+    def test_semicolons_separate_queries(self):
+        self.assertEqual(split_queries("a; b;c"), ["a", "b", "c"])
+
+    def test_a_semicolon_inside_square_brackets_is_part_of_the_change(self):
+        self.assertEqual(split_queries("NM_1:c.[76A>C;83G>C]; BRAF V600E"), ["NM_1:c.[76A>C;83G>C]", "BRAF V600E"])
+
+    def test_empty_parts_are_dropped(self):
+        self.assertEqual(split_queries(";;"), [])
+        self.assertEqual(split_queries(" BRAF V600E ;; "), ["BRAF V600E"])
+
+    def test_one_query_stays_one(self):
+        self.assertEqual(split_queries("BRAF V600E"), ["BRAF V600E"])
+
+    def test_an_unclosed_bracket_keeps_the_rest_together(self):
+        self.assertEqual(split_queries("NM_1:c.[76A>C;83G>C"), ["NM_1:c.[76A>C;83G>C"])
 
 
 class TranscriptCache(unittest.TestCase):

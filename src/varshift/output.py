@@ -60,6 +60,9 @@ BASE_COLUMNS = [
     "gnomad_loeuf",
 ]
 _TAIL_COLUMNS = ["flags", "error"]
+# How the input was read and which candidate is the answer. They come after data_versions, so scripts
+# that read the older columns by position keep working.
+_ANSWER_COLUMNS = ["read_as", "answer", "best", "why", "also", "suggestion", "mode"]
 # The sheet people read first: what matters, then where to check it.
 _PRIORITY_SHEET = [
     "priority",
@@ -102,7 +105,7 @@ class ReportContext:
 
 def columns(context: ReportContext) -> list[str]:
     links = [f"link_{name}" for name in link_names()]
-    return context.prefix + BASE_COLUMNS + output_columns(context.installed) + _TAIL_COLUMNS + links + ["data_versions"]
+    return context.prefix + BASE_COLUMNS + output_columns(context.installed) + _TAIL_COLUMNS + links + ["data_versions"] + _ANSWER_COLUMNS
 
 
 def flatten(record: dict) -> dict:
@@ -119,14 +122,17 @@ def flatten(record: dict) -> dict:
     constraint = evidence.get("constraint") or {}
     dosage = evidence.get("clingen_dosage") or {}
     priority = record.get("priority") or {}
+    source = record.get("input", {})
+    candidate = record.get("candidate", {})
+    best = candidate.get("best")
     row = {
         "priority": priority.get("label"),
         "priority_reasons": "; ".join(priority.get("reasons", [])),
-        "input": record.get("input", {}).get("raw"),
-        "input_type": record.get("input", {}).get("type"),
-        "build": record.get("input", {}).get("build"),
-        "candidate_rank": record.get("candidate", {}).get("rank"),
-        "candidates_total": record.get("candidate", {}).get("of"),
+        "input": source.get("raw"),
+        "input_type": source.get("type"),
+        "build": source.get("build"),
+        "candidate_rank": candidate.get("rank"),
+        "candidates_total": candidate.get("of"),
         "hg19_key": (variant.get("hg19") or {}).get("key"),
         "hg38_key": (variant.get("hg38") or {}).get("key"),
         "gene": gene.get("symbol"),
@@ -162,6 +168,15 @@ def flatten(record: dict) -> dict:
     for link in record.get("links", []):
         row[f"link_{link['name']}"] = link.get("url")
     row["data_versions"] = ";".join(f"{k}={v}" for k, v in sorted(record.get("versions", {}).items()))
+    row.update(
+        read_as=source.get("read_as") or None,
+        answer=source.get("answer"),
+        best=None if best is None else ("yes" if best else "no"),
+        why="; ".join(candidate.get("why") or []) or None,
+        also=record.get("also"),
+        suggestion="; ".join(record.get("suggestions") or []) or None,
+        mode=source.get("mode"),
+    )
     return row
 
 

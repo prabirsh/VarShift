@@ -9,13 +9,14 @@ import time
 from pathlib import Path
 
 from ..annotate import Annotator
+from ..answer import decide, render_answer
 from ..batch import annotate_list, annotate_vcf, vcf_columns
 from ..errors import DataError
 from ..genome import open_build_genome
 from ..output import ReportContext, ReportFolder, open_file_sink
 from ..store import DB_DIR, GENOME_DIR, MANIFEST, SCHEMA_VERSION, DataStore
+from ..term import Terminal
 from . import builders
-from ..output import render_card
 from .selftest import run_selftest
 from .manager import utc_now
 
@@ -147,7 +148,8 @@ def run_demo(demo_dir_text: str | None, out: Path, force: bool = False) -> int:
             print(f"  {counts['annotated']} annotated, {counts['ref_mismatch']} REF mismatches on purpose. Open: {folder.paths[0]}")
 
             print("\nOne result on the screen:\n")
-            print(render_card(annotator.annotate_text("BRAF V600E", "hg19")[0]))
+            term = Terminal.detect()
+            term.write(render_answer(decide(annotator.annotate_text("BRAF V600E", "hg19")), term))
         finally:
             store.close()
     finally:

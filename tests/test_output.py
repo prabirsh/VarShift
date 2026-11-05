@@ -127,6 +127,33 @@ class Tsv(Folder):
         for name in ("ClinVar", "NCBI Gene", "HGNC", "Ensembl", "UniProt", "Pfam", "ProteinPaint", "Franklin", "COSMIC", "VarSome", "OncoKB"):
             self.assertIn(f"link_{name}", columns(self.context))
 
+    # The columns as they stood before the answer and input assistant arrived. Scripts may read them by
+    # position, so they must never move. Written out in full rather than read from the code on purpose.
+    COLUMNS_BEFORE = [
+        "priority", "priority_reasons", "input", "input_type", "build", "candidate_rank", "candidates_total",
+        "hg19_key", "hg38_key", "gene", "transcript", "mane", "hgvs_g", "hgvs_c", "hgvs_p", "protein_short",
+        "exon", "intron", "effect", "clinvar_id", "clinvar_classification", "clinvar_review_status",
+        "clinvar_condition", "clinvar_oncogenicity", "clinvar_somatic_impact", "rsid", "uniprot",
+        "pfam_at_residue", "pfam_gene", "civic_variant", "civic_evidence_items", "clingen_validity",
+        "clingen_dosage", "gnomad_pli", "gnomad_loeuf", "flags", "error",
+        "link_ClinVar", "link_NCBI Gene", "link_NCBI RefSeq", "link_dbSNP", "link_HGNC", "link_Ensembl",
+        "link_UniProt", "link_Pfam", "link_ProteinPaint", "link_Franklin", "link_COSMIC", "link_VarSome",
+        "link_OncoKB", "link_gnomAD", "link_UCSC Genome Browser", "link_ClinGen", "link_CIViC", "link_OMIM",
+        "link_cBioPortal", "link_PubMed", "data_versions",
+    ]
+    ANSWER_COLUMNS = ["read_as", "answer", "best", "why", "also", "suggestion", "mode"]
+
+    def test_existing_columns_keep_their_positions(self):
+        found = columns(ReportContext())
+        self.assertEqual(found[: len(self.COLUMNS_BEFORE)], self.COLUMNS_BEFORE)
+        self.assertEqual(found[len(self.COLUMNS_BEFORE):], self.ANSWER_COLUMNS)
+
+    def test_new_columns_stay_last_with_a_vcf_and_advanced_databases(self):
+        found = columns(ReportContext(prefix=["CHROM", "POS"], installed=["revel.hg19"]))
+        self.assertEqual(found[:2], ["CHROM", "POS"])
+        self.assertEqual(found[-len(self.ANSWER_COLUMNS):], self.ANSWER_COLUMNS)
+        self.assertEqual(found[-len(self.ANSWER_COLUMNS) - 1], "data_versions")
+
     def test_advanced_columns_appear_only_when_installed(self):
         self.assertNotIn("revel", columns(ReportContext()))
         self.assertNotIn("topmed_af", columns(ReportContext()))
@@ -430,6 +457,29 @@ class Flatten(unittest.TestCase):
     def test_an_error_record_still_flattens(self):
         row = flatten({"input": {"raw": "x", "type": "vcf", "build": "hg19"}, "flags": ["ref_mismatch"], "error": "bad"})
         self.assertEqual((row["flags"], row["error"]), ("ref_mismatch", "bad"))
+
+    def test_answer_fields_reach_their_columns(self):
+        record = {
+            **RECORD,
+            "input": {**RECORD["input"], "read_as": "BRAF p.V600E", "answer": "clear", "mode": "tumour"},
+            "candidate": {"rank": 1, "of": 2, "best": True, "why": ["in ClinVar; the others aren't", "MANE Select transcript"]},
+            "also": "c.1799_1800delinsAA (2 bases, not in ClinVar)",
+            "suggestions": ["BRAF V600E", "BRAF V600K"],
+        }
+        row = flatten(record)
+        self.assertEqual(row["read_as"], "BRAF p.V600E")
+        self.assertEqual(row["answer"], "clear")
+        self.assertEqual(row["best"], "yes")
+        self.assertEqual(row["why"], "in ClinVar; the others aren't; MANE Select transcript")
+        self.assertEqual(row["also"], "c.1799_1800delinsAA (2 bases, not in ClinVar)")
+        self.assertEqual(row["suggestion"], "BRAF V600E; BRAF V600K")
+        self.assertEqual(row["mode"], "tumour")
+        self.assertEqual(flatten({**record, "candidate": {"best": False}})["best"], "no")
+
+    def test_a_record_without_answer_fields_leaves_them_empty(self):
+        row = flatten(RECORD)
+        for name in ("read_as", "answer", "best", "why", "also", "suggestion", "mode"):
+            self.assertIsNone(row[name], name)
 
     def test_advanced_values_reach_their_columns(self):
         row = flatten({"evidence": {"clinvar": {}, "advanced": {"revel": {"status": "found", "score": 0.93}, "dbsnp": {"rsid": "1", "af_topmed": 0.01}}}})

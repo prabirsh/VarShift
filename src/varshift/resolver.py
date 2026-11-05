@@ -35,8 +35,11 @@ class Candidate:
 class Resolver:
     def __init__(self, store: DataStore):
         self.store = store
+        # The gene of the last description, as given and as HGNC approves it, so an alias can be shown.
+        self.last_gene: tuple[str, str] | None = None
 
     def resolve(self, parsed: ParsedInput, build: str) -> list[Candidate]:
+        self.last_gene = None
         if parsed.kind == "position":
             contig = canonical_contig(parsed.contig, build)
             return [Candidate(normalize(self.store.genome(build), contig, parsed.pos, parsed.ref, parsed.alt), via="genomic")]
@@ -140,6 +143,7 @@ class Resolver:
         symbol = self.store.gene_symbol(gene)
         if symbol is None:
             raise ResolveError(f"{gene} is not a known gene symbol or alias")
+        self.last_gene = (gene, symbol)
         return symbol
 
     # p.
@@ -151,6 +155,7 @@ class Resolver:
             # Mitochondrial genes have no transcript model here, but ClinVar can still name the variant.
             if not parsed.gene or self.store.gene_symbol(parsed.gene) is None:
                 raise
+            self.last_gene = (parsed.gene, self.store.gene_symbol(parsed.gene))
             transcripts, flags = [], []
         coding = [t for t in transcripts if t.coding]
         change = parsed.protein

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from .advanced import ALIAS, DATABASES
+from .answer import apply as apply_answer, decide
 from .builds import BUILDS, HG19, HG38, is_mitochondrial, key_contig, parse_build
 from .consequence import UPSTREAM_DISTANCE, SequenceCache, TranscriptEffect, annotate as effect_on, hgvs_g
 from .errors import DataError, InputError
@@ -12,6 +15,7 @@ from .priority import assign as assign_priority
 from .liftover import LiftResult, lift
 from .resolver import Candidate, Resolver
 from .store import DataStore
+from .tidy import Reading, tidy
 from .variant import Variant
 
 
@@ -50,12 +54,26 @@ class Annotator:
             raise DataError(f"{build} data is not installed here; run: varshift setup build={build}")
         return build
 
-    def annotate_text(self, text: str, build: str | None = None, gene: str = "") -> list[dict]:
-        """Annotate one description. Returns one result per candidate, best candidate first."""
-        parsed = parse_input(text, gene=gene)
+    def annotate_text(self, text: str, build: str | None = None, gene: str = "", mode: str | None = None) -> list[dict]:
+        """Annotate one description. Returns one result per candidate, best candidate first.
+
+        Slips with only one sensible reading are fixed first (tidy.py), and the reading is recorded.
+        """
+        reading = tidy(text, gene)
+        parsed = parse_input(reading.text, gene=gene)
         chosen = self._pick_build(parsed, build)
         candidates = self.resolver.resolve(parsed, chosen)
-        input_info = {"raw": text.strip(), "type": parsed.kind, "build": chosen}
+        read_as, notes = self._read_as(reading)
+        input_info = {
+            "raw": text.strip(),
+            "type": parsed.kind,
+            "build": chosen,
+            "read_as": read_as,
+            "read_as_notes": notes,
+            # single, clear or choice: how the candidates add up to an answer, from answer.py.
+            "answer": None,
+            "mode": mode,
+        }
         results = []
         for rank, candidate in enumerate(candidates, 1):
             record = self.annotate_candidate(candidate)
@@ -66,11 +84,32 @@ class Annotator:
                 "via": candidate.via,
                 # The resolver only checks ClinVar for some input kinds, so the record's own lookup decides.
                 "in_clinvar": candidate.in_clinvar or record["evidence"]["clinvar"].get("status") == "found",
+                "bases_changed": candidate.bases_changed,
+                "best": False,
+                "why": [],
             }
             if len(candidates) > 1 and "multiple_candidates" not in record["flags"]:
                 record["flags"].append("multiple_candidates")
             results.append(record)
-        return results
+        # The best candidate, if one stands out, comes first and says why.
+        return apply_answer(decide(results))
+
+    def _read_as(self, reading: Reading) -> tuple[str, list[str]]:
+        """The text as VarShift read it, with the gene as HGNC writes it, or "" when nothing changed."""
+        text, notes = reading.text, list(reading.notes)
+        named = self.resolver.last_gene
+        if named and named[0] != named[1]:
+            typed, approved = named
+            # A gene given with gene= isn't in the text, so there is nothing to rewrite.
+            rewritten = _replace_word(text, typed, approved)
+            if rewritten != text and typed.upper() == approved.upper():
+                text = rewritten
+                notes.append("gene symbol written as HGNC writes it")
+            elif rewritten != text:
+                text = f"{rewritten} ({typed} is an alias)"
+        if text == reading.text and not notes:
+            return "", []
+        return text, notes
 
     def annotate_candidate(self, candidate: Candidate) -> dict:
         variant = candidate.variant
@@ -402,6 +441,12 @@ class Annotator:
         if not rows:
             return {"status": "not_found"}
         return {"status": "found", "mim": rows[0]["mim"], "phenotypes": "; ".join(row["phenotypes"] for row in rows if row["phenotypes"]) or None}
+
+
+def _replace_word(text: str, word: str, replacement: str) -> str:
+    """Replace the first place the word stands on its own, as a gene symbol does, in the text."""
+    pattern = rf"(?<![A-Za-z0-9_.\-]){re.escape(word)}(?![A-Za-z0-9_.\-])"
+    return re.sub(pattern, lambda _: replacement, text, count=1)
 
 
 def _pretty(value) -> str | None:
