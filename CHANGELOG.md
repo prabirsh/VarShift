@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Colour on the screen: priority words are coloured, as are the field names and questions. `color=auto` (the default) colours a terminal only, `color=yes` and `color=no` decide, and `NO_COLOR` always turns it off. On Windows the console is switched into colour mode if it can be.
 - Several queries separated by `;` with no `out=` now print one numbered line each, then how to see one in full and how to save them all.
 - The demo shows the new card.
+- When a description fails, VarShift offers what it probably meant, built from the installed data. `BRAF V600` lists the changes ClinVar and CIViC know at that residue, `V600E` the genes that have it, `BRFA V600E` the symbols one or two letters away (BRAF first, ranked by ClinVar records), `BRAF W600E` the residue the protein really has, `BRAF c.1799A>T` the swapped or corrected bases, and a position whose REF fits the other build that build. In a terminal you choose a number and it is annotated, with `Read as` saying what was chosen and the input kept as typed. Otherwise, as with `out=` or `format=`, the error is followed by `Did you mean:` and the exit code stays 1. Nothing is ever applied without being chosen.
 
 ### Changed
 

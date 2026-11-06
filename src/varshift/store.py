@@ -79,6 +79,34 @@ def decode_blocks(text: str) -> tuple[tuple[int, int, int], ...]:
     return tuple(tuple(int(number) for number in item.split("-")) for item in text.split(",")) if text else ()
 
 
+_IN_CHUNK = 500  # names per IN (...) query, well inside SQLite's limit on parameters
+
+
+def _symbol_map(symbols, aliases) -> dict[str, str]:
+    """Upper-case names to approved symbols, with gene_symbol's rules.
+
+    aliases holds (alias, kind, approved symbol). An approved symbol wins, then a previous symbol, then
+    an alias, and a name shared by several genes is left out.
+    """
+    named: dict[str, dict[str, set[str]]] = {"alias": {}, "previous": {}}
+    for alias, kind, symbol in aliases:
+        named["previous" if kind == "previous" else "alias"].setdefault(alias, set()).add(symbol)
+    found: dict[str, str] = {}
+    for kind in ("alias", "previous"):
+        for alias, owners in named[kind].items():
+            if len(owners) == 1:
+                found[alias] = next(iter(owners))
+            elif kind == "previous":
+                found.pop(alias, None)
+    found.update((symbol.upper(), symbol) for symbol in symbols)
+    return found
+
+
+def _like_prefix(prefix: str) -> str:
+    """A LIKE pattern for names starting with prefix, where _ and % in the prefix are ordinary letters."""
+    return prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
 class DataStore:
     def __init__(self, data_dir: Path, overrides: dict[str, Path] | None = None):
         """overrides maps a database name to a file used in its place, for testing a new build."""
@@ -101,6 +129,7 @@ class DataStore:
         self.sql_log: list | None = None
         self._transcript_cache: dict[tuple[str, str, str, int], Transcript] = {}
         self.gene_symbol = lru_cache(maxsize=4096)(self._gene_symbol)
+        self._approved: dict[str, str] | None = None
 
     # plumbing
     @property
@@ -264,6 +293,43 @@ class DataStore:
             raise InputError(f"{text} is an alias of several genes ({', '.join(symbols)}); use the approved symbol")
         return symbols[0]
 
+    def approved_symbols(self) -> dict[str, str]:
+        """Every approved symbol, in upper case, mapped to itself as HGNC writes it. Read once per store.
+
+        For spelling suggestions two edits away, which are too many names to look up one by one.
+        Aliases are left out: two edits from an alias is too weak a match to offer.
+        """
+        if self._approved is None:
+            self._approved = {}
+            db = self._db("genes")
+            if db is not None:
+                cursor = db.cursor()
+                cursor.row_factory = None  # plain tuples: 45,000 rows, and someone is waiting
+                self._approved = {symbol.upper(): symbol for (symbol,) in cursor.execute("SELECT symbol FROM genes")}
+        return self._approved
+
+    def gene_symbols_for(self, names) -> dict[str, str]:
+        """These names, in upper case, mapped to approved symbols, with gene_symbol's rules.
+
+        Symbols, previous symbols and aliases count, through the indexes: quick for a few hundred names.
+        """
+        db = self._db("genes")
+        if db is None:
+            return {}
+        wanted = sorted({name.upper() for name in names})
+        cursor = db.cursor()
+        cursor.row_factory = None
+        symbols: list[str] = []
+        aliases: list[tuple[str, str, str]] = []
+        for start in range(0, len(wanted), _IN_CHUNK):
+            chunk = wanted[start : start + _IN_CHUNK]
+            marks = ",".join("?" * len(chunk))
+            symbols += [symbol for (symbol,) in cursor.execute(f"SELECT symbol FROM genes WHERE upper(symbol) IN ({marks})", chunk)]
+            aliases += cursor.execute(
+                f"SELECT a.alias, a.kind, g.symbol FROM aliases a JOIN genes g ON g.hgnc_id=a.hgnc_id WHERE a.alias IN ({marks})", chunk
+            ).fetchall()
+        return _symbol_map(symbols, aliases)
+
     def gene_info(self, symbol: str) -> sqlite3.Row | None:
         db = self._db("genes")
         return db.execute("SELECT * FROM genes WHERE symbol=?", (symbol,)).fetchone() if db else None
@@ -303,6 +369,37 @@ class DataStore:
             return []
         return db.execute("SELECT * FROM clinvar_names WHERE variation_id=?", (variation_id,)).fetchall()
 
+    def clinvar_changes_at(self, build: str, gene: str, prefix: str) -> list[tuple[str, str | None]]:
+        """ClinVar's protein changes in a gene that start with a prefix such as p.Val600: (name, classification).
+
+        One row per ClinVar record. The caller checks that the residue number ends where the prefix does.
+        """
+        db = self._db(f"clinvar.{build}")
+        if db is None:
+            return []
+        rows = db.execute(
+            "SELECT DISTINCT n.variation_id, n.protein_style, c.classification FROM clinvar_names n "
+            "JOIN clinvar c ON c.variation_id=n.variation_id WHERE n.gene=? AND n.protein_style LIKE ? ESCAPE '\\'",
+            (gene, _like_prefix(prefix)),
+        ).fetchall()
+        return [(row["protein_style"], row["classification"]) for row in rows]
+
+    def genes_with_change(self, build: str, protein_style: str) -> list[tuple[str, int]]:
+        """Genes whose ClinVar names include this protein change, with how many names. Reads the whole table."""
+        db = self._db(f"clinvar.{build}")
+        if db is None:
+            return []
+        rows = db.execute(
+            "SELECT gene, count(*) AS names FROM clinvar_names WHERE protein_style=? GROUP BY gene ORDER BY names DESC",
+            (protein_style,),
+        ).fetchall()
+        return [(row["gene"], row["names"]) for row in rows if row["gene"]]
+
+    def clinvar_count(self, build: str, gene: str) -> int:
+        """How many ClinVar names a gene has, from the index alone."""
+        db = self._db(f"clinvar.{build}")
+        return db.execute("SELECT count(*) FROM clinvar_names WHERE gene=?", (gene,)).fetchone()[0] if db else 0
+
     # other evidence
     def uniprot_for_gene(self, symbol: str) -> sqlite3.Row | None:
         db = self._db("proteins")
@@ -337,6 +434,28 @@ class DataStore:
         if db is None or not name:
             return []
         return db.execute("SELECT * FROM civic_variants WHERE gene=? AND upper(variant)=?", (gene, name.upper())).fetchall()
+
+    def civic_variants_at(self, gene: str, prefix: str) -> list[tuple[str, int]]:
+        """CIViC's variants in a gene whose names start with a prefix such as V600: (name, evidence items)."""
+        db = self._db("civic")
+        if db is None or not prefix:
+            return []
+        rows = db.execute(
+            "SELECT variant, evidence_items FROM civic_variants WHERE gene=? AND upper(variant) LIKE ? ESCAPE '\\'",
+            (gene, _like_prefix(prefix.upper())),
+        ).fetchall()
+        return [(row["variant"], row["evidence_items"] or 0) for row in rows]
+
+    def civic_genes_with(self, name: str) -> list[tuple[str, int]]:
+        """Genes with a CIViC variant of this name, such as V600E, with their evidence items."""
+        db = self._db("civic")
+        if db is None or not name:
+            return []
+        rows = db.execute(
+            "SELECT gene, sum(evidence_items) AS items FROM civic_variants WHERE upper(variant)=? GROUP BY gene",
+            (name.upper(),),
+        ).fetchall()
+        return [(row["gene"], row["items"] or 0) for row in rows if row["gene"]]
 
     # advanced databases
 

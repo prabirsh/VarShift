@@ -51,7 +51,7 @@ _KEYWORDS_RE = re.compile(r"delins|del|dup|ins|ext|fs", re.IGNORECASE)
 def tidy(text: str, gene: str = "") -> Reading:
     """Return the text to annotate, and a note for each change made to it."""
     original = text.strip()
-    if len(original) > MAX_INPUT_LENGTH or _reads(original, gene):
+    if len(original) > MAX_INPUT_LENGTH or reads(original, gene):
         return Reading(original)
     current = original
     notes: list[str] = []
@@ -60,17 +60,24 @@ def tidy(text: str, gene: str = "") -> Reading:
         if changed != current:
             current = changed
             notes.append(note)
-            if _reads(current, gene):
+            if reads(current, gene):
                 break
     return Reading(current, tuple(notes))
 
 
-def _reads(text: str, gene: str) -> bool:
+def reads(text: str, gene: str = "") -> bool:
+    """True when the text is a description VarShift can read, before any data is looked at."""
     try:
         parse_input(text, gene=gene)
     except (VarShiftError, ValueError):
         return False
     return True
+
+
+def replace_word(text: str, word: str, replacement: str) -> str:
+    """Replace the first place the word stands on its own, as a gene symbol does, in the text."""
+    pattern = rf"(?<![A-Za-z0-9_.\-]){re.escape(word)}(?![A-Za-z0-9_.\-])"
+    return re.sub(pattern, lambda _: replacement, text, count=1)
 
 
 # The rules, in the order they are tried. Each returns the new text and what it did.

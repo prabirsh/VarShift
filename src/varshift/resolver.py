@@ -88,7 +88,8 @@ class Resolver:
     def _from_coding(self, parsed: ParsedInput, build: str) -> list[Candidate]:
         genome = self.store.genome(build)
         transcripts, flags = self._transcripts_for(parsed, build)
-        tried = []
+        tried: list[str] = []
+        causes: list = []
         for number, tx in enumerate(transcripts):
             if parsed.level == "c" and not tx.coding:
                 tried.append(f"{tx.accession}: non-coding, so c. numbering does not apply")
@@ -100,12 +101,13 @@ class Resolver:
                 variant = _apply_on_transcript(genome, tx, parsed.dna)
             except (ReferenceMismatch, ResolveError, InputError) as exc:
                 tried.append(f"{tx.accession}: {exc}")
+                causes.append(exc)
                 continue
             candidate = Candidate(variant, tx, via="coding", bases_changed=_size(variant), flags=list(flags))
             if number and not parsed.transcript:
                 candidate.flags.append("other_transcript_used")
             return [candidate]
-        raise ResolveError(f"no transcript fits {parsed.raw.strip()}", tried)
+        raise ResolveError(f"no transcript fits {parsed.raw.strip()}", tried, causes)
 
     def _transcripts_for(self, parsed: ParsedInput, build: str) -> tuple[list[Transcript], list[str]]:
         if parsed.transcript:
@@ -160,6 +162,7 @@ class Resolver:
         coding = [t for t in transcripts if t.coding]
         change = parsed.protein
         tried: list[str] = []
+        causes: list = []
         found: list[Candidate] = []
         gene = coding[0].gene if coding else self.store.gene_symbol(parsed.gene)
         for number, tx in enumerate(coding):
@@ -167,6 +170,7 @@ class Resolver:
                 found = _protein_candidates(genome, tx, change)
             except (ResolveError, ReferenceMismatch, InputError) as exc:
                 tried.append(f"{tx.accession}: {exc}")
+                causes.append(exc)
                 continue
             for candidate in found:
                 candidate.flags.extend(flags)
@@ -194,7 +198,7 @@ class Resolver:
                     f"{change.clinvar_style} does not define one DNA change, and ClinVar has no record of it "
                     "for this gene. Give the c. name instead.",
                 )
-            raise ResolveError(f"no transcript fits {parsed.raw.strip()}", tried)
+            raise ResolveError(f"no transcript fits {parsed.raw.strip()}", tried, causes)
         return _rank(list(known.values()))
 
 
@@ -225,7 +229,11 @@ def _check_residue(tx: Transcript, protein: str, residue: str, position: int) ->
     found = protein[position - 1]
     if found != residue:
         raise ReferenceMismatch(
-            f"residue {position} is {AA3[found]}, not {AA3[residue]}", expected=residue, found=found
+            f"residue {position} is {AA3[found]}, not {AA3[residue]}",
+            expected=residue,
+            found=found,
+            position=position,
+            transcript=tx.accession,
         )
 
 
@@ -301,7 +309,12 @@ def _apply_on_transcript(genome: Genome, tx: Transcript, dna: DnaChange) -> Vari
         dna.ref if tx.strand > 0 else reverse_complement(dna.ref),
         dna.alt if tx.strand > 0 else reverse_complement(dna.alt),
     )
-    return _apply_forward(genome, tx.contig, low, high + 1, forward)
+    try:
+        return _apply_forward(genome, tx.contig, low, high + 1, forward)
+    except ReferenceMismatch as exc:
+        # Say what the transcript has, on its own strand, so the c. name can be corrected.
+        found = exc.found if tx.strand > 0 else reverse_complement(exc.found)
+        raise ReferenceMismatch(str(exc), expected=dna.ref, found=found, position=str(dna.first), transcript=tx.accession) from exc
 
 
 def _crosses_junction(tx: Transcript, dna: DnaChange, g_first: int, g_last: int) -> bool:

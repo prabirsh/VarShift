@@ -17,9 +17,10 @@ from .answer import Answer, choice_table, decide, error_line, render_answer, ren
 from .batch import annotate_lines, annotate_list, annotate_vcf, split_queries, vcf_columns
 from .commandline import COMMANDS, Values, parse, render_help
 from .config import default_data_dir, is_windows_mount, load_settings, resolve_data_dir, save_setting
-from .errors import InputError, ResolveError, SetupError, VarShiftError
+from .errors import InputError, ReferenceMismatch, ResolveError, SetupError, VarShiftError
 from .output import ReportContext, ReportFolder, ScreenSink, format_of, open_file_sink, render_card
 from .store import DataStore
+from .suggest import suggest
 from .term import Terminal
 from .updates import check_in_background, clear_applied, notice_lines, read_status
 from .vcf import looks_like_vcf
@@ -41,13 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         values = parse(sys.argv[1:] if argv is None else argv)
         return HANDLERS[values.command](values)
-    except ResolveError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        for line in exc.tried:
-            print(f"  tried {line}", file=sys.stderr)
-        return 1
     except VarShiftError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        _report(exc)
         return 1
     except KeyboardInterrupt:
         print("stopped", file=sys.stderr)
@@ -59,6 +55,12 @@ def main(argv: list[str] | None = None) -> int:
         if exc.errno == errno.ENOMEM:
             print(_OUT_OF_MEMORY, file=sys.stderr)
         return 1
+
+
+def _report(exc: VarShiftError) -> None:
+    print(f"error: {exc}", file=sys.stderr)
+    for line in getattr(exc, "tried", []):
+        print(f"  tried {line}", file=sys.stderr)
 
 
 def _help(values: Values) -> int:
@@ -112,7 +114,13 @@ def _annotate(values: Values) -> int:
             sink = _sink_for_single(values, context)
             counts = annotate_lines(annotator, enumerate(queries, 1), sink, build, gene, mode, label="query")
             return _finish_file(sink, counts)
-        records = annotator.annotate_text(queries[0] if queries else source, build, gene, mode)
+        text = queries[0] if queries else source
+        try:
+            records = annotator.annotate_text(text, build, gene, mode)
+        except (InputError, ResolveError, ReferenceMismatch) as exc:
+            records = _suggest_instead(annotator, text, exc, values, mode, term, on_screen)
+            if records is None:
+                return 1
         if on_screen:
             return _show_answer(records, values, mode, term)
         sink = _sink_for_single(values, context)
@@ -144,6 +152,40 @@ def _terminal(values: Values) -> Terminal:
         return Terminal.detect(setting)
     except ValueError:
         raise InputError(f"color must be auto, yes or no, not {setting!r}") from None
+
+
+FORMAT_HINT = "Not sure of the format? See: varshift help annotate"
+
+
+def _suggest_instead(annotator: Annotator, text: str, error: VarShiftError, values: Values, mode, term: Terminal, on_screen: bool):
+    """A description failed. Offer what it probably meant: ask when someone can answer, else say it.
+
+    Returns the records of the chosen suggestion, or None when nothing was annotated (the reason is printed).
+    """
+    build, gene = values.get("build"), values.get("gene") or ""
+    question = suggest(annotator.store, text, error, build, gene=gene)
+    if not (on_screen and term.interactive and question is not None and question.options):
+        _report(error)
+        if question is not None and question.options:
+            choices = [option.text + (f" build={option.build}" if option.build else "") for option in question.options[:5]]
+            print(f"Did you mean: {', '.join(choices)}", file=sys.stderr)
+        else:
+            print(question.text if question is not None else FORMAT_HINT, file=sys.stderr)
+        return None
+    width = max(len(option.label) for option in question.options)
+    picked = term.choose(term.style(question.text, "strong"), [f"{o.label:<{width}}  {o.detail}" for o in question.options])
+    if picked is None:
+        print("Nothing annotated.", file=sys.stderr)
+        return None
+    option = question.options[picked[0]]
+    # Annotated once, as if it had been typed. If it fails too, that error is shown as it is.
+    records = annotator.annotate_text(option.text, option.build or build, gene, mode)
+    source = records[0]["input"]  # shared by every record of this query
+    source["read_as"] = source["read_as"] or option.text
+    chosen = ["chosen from the suggestions"] + ([f"on {option.build}"] if option.build else [])
+    source["read_as_notes"] = list(source.get("read_as_notes") or []) + chosen
+    source["raw"] = text.strip()
+    return records
 
 
 def _show_answer(records: list[dict], values: Values, mode: str | None, term: Terminal) -> int:

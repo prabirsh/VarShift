@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from .advanced import ALIAS, DATABASES
 from .answer import apply as apply_answer, decide
 from .builds import BUILDS, HG19, HG38, is_mitochondrial, key_contig, parse_build
@@ -15,7 +13,7 @@ from .priority import assign as assign_priority
 from .liftover import LiftResult, lift
 from .resolver import Candidate, Resolver
 from .store import DataStore
-from .tidy import Reading, tidy
+from .tidy import Reading, replace_word, tidy
 from .variant import Variant
 
 
@@ -101,7 +99,7 @@ class Annotator:
         if named and named[0] != named[1]:
             typed, approved = named
             # A gene given with gene= isn't in the text, so there is nothing to rewrite.
-            rewritten = _replace_word(text, typed, approved)
+            rewritten = replace_word(text, typed, approved)
             if rewritten != text and typed.upper() == approved.upper():
                 text = rewritten
                 notes.append("gene symbol written as HGNC writes it")
@@ -441,12 +439,6 @@ class Annotator:
         if not rows:
             return {"status": "not_found"}
         return {"status": "found", "mim": rows[0]["mim"], "phenotypes": "; ".join(row["phenotypes"] for row in rows if row["phenotypes"]) or None}
-
-
-def _replace_word(text: str, word: str, replacement: str) -> str:
-    """Replace the first place the word stands on its own, as a gene symbol does, in the text."""
-    pattern = rf"(?<![A-Za-z0-9_.\-]){re.escape(word)}(?![A-Za-z0-9_.\-])"
-    return re.sub(pattern, lambda _: replacement, text, count=1)
 
 
 def _pretty(value) -> str | None:

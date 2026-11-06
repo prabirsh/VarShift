@@ -21,6 +21,7 @@ from varshift.errors import DataError, InputError, ReferenceMismatch, ResolveErr
 from varshift.pipeline.demo import build_demo_store
 from varshift.pipeline.selftest import run_selftest
 from varshift.store import DataStore
+from varshift.suggest import Option, Question
 
 DEMO = Path(__file__).resolve().parents[1] / "demo"
 
@@ -333,6 +334,76 @@ class ScreenAnswers(WithData):
         self.assertEqual(lines[0].index("chr7"), lines[1].index("chr12"))
         self.assertIn('varshift annotate "BRAF V600E" build=hg19', out)
         self.assertIn("out=results.xlsx", out)
+
+    def test_a_failure_says_did_you_mean_when_no_one_can_answer(self):
+        code, out, err = self._cli("annotate", "BRAF V600", "build=hg19")
+        self.assertEqual(code, 1)
+        self.assertIn("error: cannot read the protein change", err)
+        self.assertIn("Did you mean: BRAF V600E", err)
+        self.assertEqual(out, "")
+
+    def test_a_suggestion_chosen_at_the_terminal_is_annotated(self):
+        terminal = ScriptedTerminal(answers=["1"])
+        code, _, err = self._cli("annotate", "BRAF V600", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Val600 changes to what?", terminal.output)
+        self.assertIn("Choose 1 to", terminal.output)
+        heading = next(line for line in terminal.output.splitlines() if "  ->  " in line)
+        self.assertTrue(heading.startswith("BRAF V600  ->  chr7-140453136-A-T"), heading)
+        read_as = next(line for line in terminal.output.splitlines() if line.lstrip().startswith("Read as"))
+        self.assertIn("BRAF V600E", read_as)
+        self.assertIn("chosen from the suggestions", read_as)
+
+    def test_a_suggestion_can_move_to_the_other_build(self):
+        terminal = ScriptedTerminal(answers=["1"])
+        code, _, err = self._cli("annotate", "chr7-140753336-A-T", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 0, err)
+        heading = next(line for line in terminal.output.splitlines() if "  ->  " in line)
+        self.assertIn("chr7-140753336-A-T (hg38)", heading)
+
+    def test_cancelling_the_question_annotates_nothing(self):
+        terminal = ScriptedTerminal(answers=[""])
+        code, _, err = self._cli("annotate", "BRAF V600", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 1)
+        self.assertIn("Nothing annotated.", err)
+
+    def test_output_for_a_file_or_a_format_never_asks(self):
+        for word in ("format=json", f"out={Path(self.folder.name) / 'never.tsv'}"):
+            with self.subTest(word=word):
+                terminal = ScriptedTerminal(answers=["1"])
+                code, out, err = self._cli("annotate", "BRAF V600", "build=hg19", word, terminal=terminal)
+                self.assertEqual(code, 1)
+                self.assertEqual(terminal.position, 0)
+                self.assertNotIn("Choose", terminal.output)
+                self.assertIn("Did you mean: BRAF V600E", err)
+
+    def test_nothing_to_suggest_points_at_the_examples(self):
+        for terminal in (None, ScriptedTerminal(answers=["1"])):
+            with self.subTest(interactive=terminal is not None):
+                code, _, err = self._cli("annotate", "xyz123", "build=hg19", terminal=terminal)
+                self.assertEqual(code, 1)
+                self.assertIn("error:", err)
+                self.assertIn(cli.FORMAT_HINT, err)
+                if terminal is not None:
+                    self.assertEqual(terminal.position, 0)
+
+    def test_a_hint_with_no_options_is_printed_instead(self):
+        hint = Question("It may be on hg38, which isn't installed here. To add it: varshift setup build=hg38")
+        with mock.patch.object(cli, "suggest", return_value=hint):
+            code, _, err = self._cli("annotate", "chr7-140753336-A-T", "build=hg19", terminal=ScriptedTerminal(answers=["1"]))
+        self.assertEqual(code, 1)
+        self.assertIn("varshift setup build=hg38", err)
+        self.assertNotIn(cli.FORMAT_HINT, err)
+
+    def test_a_chosen_suggestion_that_fails_is_a_plain_error(self):
+        question = Question("Did you mean:", (Option("NOTAGENE V600E", "NOTAGENE", ""),))
+        terminal = ScriptedTerminal(answers=["1", "1"])
+        with mock.patch.object(cli, "suggest", return_value=question) as asked:
+            code, _, err = self._cli("annotate", "BRFA V600E", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 1)
+        self.assertEqual(asked.call_count, 1)
+        self.assertEqual(terminal.position, 1)
+        self.assertIn("NOTAGENE is not a known gene symbol", err)
 
     def test_a_list_file_and_a_vcf_record_the_mode(self):
         listing = Path(self.folder.name) / "modes.txt"
