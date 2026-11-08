@@ -18,6 +18,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Several queries separated by `;` with no `out=` now print one numbered line each, then how to see one in full and how to save them all.
 - The demo shows the new card.
 - When a description fails, VarShift offers what it probably meant, built from the installed data. `BRAF V600` lists the changes ClinVar and CIViC know at that residue, `V600E` the genes that have it, `BRFA V600E` the symbols one or two letters away (BRAF first, ranked by ClinVar records), `BRAF W600E` the residue the protein really has, `BRAF c.1799A>T` the swapped or corrected bases, and a position whose REF fits the other build that build. In a terminal you choose a number and it is annotated, with `Read as` saying what was chosen and the input kept as typed. Otherwise, as with `out=` or `format=`, the error is followed by `Did you mean:` and the exit code stays 1. Nothing is ever applied without being chosen.
+- In a list file or a `;` list, a line that fails stays an error row, and its suggestions go in the `suggestion` column, so the file can be fixed and run again. Only the quick suggestions run there (not the search for which genes have a change), and only for the first 500 failing lines, so a broken file can't run for hours. The summary says how many rows have a suggestion. VCF records are never tidied or suggested: they are written by machines, and a change there would hide a real problem.
+- Every workbook has a Links sheet, after All results: one row per result and database, with the result number, input, gene, c. and p. names, the database, a clickable link, whether it is a confirmed ID or built from the variant, and its note. A database with no link for that result says why. The rows wait in a private file beside the output while the run goes on, so a large VCF doesn't fill memory. Past Excel's limits, the Summary sheet says what was left out and where to find it.
 
 ### Changed
 
@@ -28,6 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- Writing a workbook kept every link of every row in memory, though only the first 65,000 per sheet can be clickable. A large VCF has twenty per row, so this could reach gigabytes. Links past the limit are now plain text and aren't kept.
 - `.gitignore` re-included everything under `demo/`, so a sample VCF dropped there to try VarShift, with its results, could have been committed. Only the demo's own files are kept now.
 - `varshift add revel` failed with `403 Forbidden`, because REVEL's own server refuses scripted downloads. REVEL now comes from its Zenodo record, which its download page names as the other source, and is checked against Zenodo's MD5.
 - c. and p. names on RefSeq transcripts that don't align exactly to the genome, 1,231 on hg19 and 306 of them MANE Select. Counting along RefSeq's exon rows put everything after a gap off by its length, and a c. name as input could land a few bases away. VarShift now numbers through RefSeq's own alignment. On 20,027 ClinVar names, c. SNVs went from 99.51% to 99.94% and p. SNVs from 99.38% to 99.81%. The transcript databases need rebuilding to get this.

@@ -405,6 +405,53 @@ class ScreenAnswers(WithData):
         self.assertEqual(terminal.position, 1)
         self.assertIn("NOTAGENE is not a known gene symbol", err)
 
+    def _rows(self, path):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        header = lines[0].split("\t")
+        return [dict(zip(header, line.split("\t"))) for line in lines[1:]]
+
+    def test_a_list_file_suggests_for_the_lines_that_fail(self):
+        listing = Path(self.folder.name) / "slips.txt"
+        listing.write_text("BRAF V600\nBRFA V600E\nnonsense\nKRAS G12D\n", encoding="utf-8")
+        target = Path(self.folder.name) / "slips.tsv"
+        code, _, err = self._cli("annotate", str(listing), "build=hg19", f"out={target}", "replace")
+        self.assertEqual(code, 0, err)
+        rows = {row["input"]: row for row in self._rows(target)}
+        self.assertIn("BRAF V600E", rows["BRAF V600"]["suggestion"].split("; "))
+        self.assertEqual(rows["BRFA V600E"]["suggestion"].split("; ")[0], "BRAF V600E")
+        self.assertEqual(rows["nonsense"]["suggestion"], "")
+        self.assertEqual(rows["KRAS G12D"]["gene"], "KRAS")
+        self.assertEqual(rows["KRAS G12D"]["suggestion"], "")
+        self.assertIn("with a suggestion: 2", err)
+
+    def test_suggestions_stop_after_500_failing_lines(self):
+        question = Question("q", (Option("KRAS G12D", "KRAS G12D", ""),))
+        writer = Collect()
+        with mock.patch("varshift.batch.suggest", return_value=question) as asked:
+            counts = annotate_lines(self.annotator, ((n, "nonsense") for n in range(1, 601)), writer, "hg19")
+        self.assertEqual(asked.call_count, 500)
+        self.assertEqual(counts["errors"], 600)
+        self.assertEqual(counts["with_a_suggestion"], 500)
+        self.assertEqual(sum(1 for record in writer.records if record.get("suggestions")), 500)
+        self.assertTrue(all(call.kwargs.get("fast_only") for call in asked.call_args_list))
+
+    def test_a_vcf_is_never_tidied_or_suggested(self):
+        target = Path(self.folder.name) / "never.tsv"
+        with mock.patch("varshift.batch.suggest") as asked:
+            code, _, err = self._cli("annotate", str(DEMO / "demo.hg19.vcf"), f"out={target}", "replace")
+        self.assertEqual(code, 0, err)
+        asked.assert_not_called()
+        rows = self._rows(target)
+        self.assertTrue(any(row["flags"] == "ref_mismatch" for row in rows))
+        self.assertEqual({(row["read_as"], row["suggestion"]) for row in rows}, {("", "")})
+
+    def test_a_failing_query_on_screen_says_what_it_probably_meant(self):
+        code, out, err = self._cli("annotate", "BRAF V600; KRAS G12D", "build=hg19")
+        self.assertEqual(code, 0, err)
+        first = out.splitlines()[0]
+        self.assertIn("could not annotate", first)
+        self.assertIn("did you mean BRAF V600E", first)
+
     def test_a_list_file_and_a_vcf_record_the_mode(self):
         listing = Path(self.folder.name) / "modes.txt"
         listing.write_text("BRAF V600E\nNOTAGENE V600E\n", encoding="utf-8")

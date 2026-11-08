@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from .advanced import flatten_advanced
 from .flags import FLAG_HELP
-from .output import _clinvar_status
+from .output import LINK_LABELS, _clinvar_status
 
 ALSO_SHOWN = 3
 LINKS_SHOWN = 5
@@ -31,7 +31,6 @@ _DOT = " \u00b7 "
 _LABEL = 12  # the width of a field name; values start after it and two spaces of indent
 _INDENT = " " * (2 + _LABEL)
 _NAME = 21  # the width of a link name on the Check it lines
-_LINK_LABELS = {"confirmed_id": "confirmed ID", "built": "built"}
 # Also says it better than the warning would.
 _NOT_NOTED = {"multiple_candidates"}
 
@@ -259,7 +258,7 @@ def _link_lines(term, links: list[dict], mode: str | None, links_all: bool) -> l
         rows = []
         for link in links:
             rows.append(f"{link['name']:<{_NAME}}{link.get('url') or 'no link'}")
-            about = "; ".join(part for part in (_LINK_LABELS.get(link.get("label"), link.get("label")), link.get("note")) if part)
+            about = "; ".join(part for part in (LINK_LABELS.get(link.get("label"), link.get("label")), link.get("note")) if part)
             rows += [" " * _NAME + part for part in _wrap(about, max(term.width - len(_INDENT) - _NAME, 20))]
     else:
         by_name = {link["name"]: link for link in links}

@@ -15,7 +15,7 @@ from xml.sax.saxutils import escape, quoteattr
 MAX_ROWS = 1_048_576
 _MAX_LINK_LENGTH = 2000
 _MAX_CELL = 32_767
-_MAX_LINKS_PER_SHEET = 65_000
+MAX_LINKS_PER_SHEET = 65_000  # Excel's limit on hyperlinks in one sheet
 _INVALID_XML = {c: None for c in range(32) if c not in (9, 10, 13)}
 
 # Style numbers for write_row.
@@ -147,7 +147,8 @@ class XlsxWriter:
                 value = "yes" if value else "no"
             if isinstance(value, (int, float)):
                 cells.append(f'<c r="{reference}"{mark}><v>{value}</v></c>')
-            elif _safe_link(value) and style != HEADER:
+            elif _safe_link(value) and style != HEADER and len(self._links) < MAX_LINKS_PER_SHEET:
+                # Past Excel's limit a link is plain text, and isn't kept: a large VCF has millions of them.
                 self._links.append((reference, value))
                 cells.append(f'<c r="{reference}" s="{LINK}" t="inlineStr"><is><t>{_text(value)}</t></is></c>')
             else:
@@ -161,7 +162,7 @@ class XlsxWriter:
         if self._filter and self._row > 0 and self._columns > 0:
             self._put(f'<autoFilter ref="A1:{_column(self._columns - 1)}{self._row}"/>')
         sheet = len(self._sheets)
-        kept = self._links[:_MAX_LINKS_PER_SHEET]
+        kept = self._links
         if kept:
             self._put("<hyperlinks>")
             for number, (reference, _) in enumerate(kept, 1):

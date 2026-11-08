@@ -267,10 +267,15 @@ class JsonSink(_FileSink):
         self._finish()
 
 
+LINK_LABELS = {"confirmed_id": "confirmed ID", "built": "built"}
+LINKS_HEADER = ["Result", "Input", "Gene", "c.", "p.", "Database", "Link", "Label", "Note"]
+
+
 class ExcelSink(_FileSink):
-    """A workbook with a summary, a sorted priority sheet, every result, and what the warnings mean."""
+    """A workbook with a summary, a sorted priority sheet, every result, every link, and what the warnings mean."""
 
     row_limit = xlsx.MAX_ROWS  # rows in All results, the header included
+    links_limit = xlsx.MAX_ROWS  # rows in Links, the header included
 
     def __init__(self, path, context: ReportContext, replace: bool = False):
         super().__init__(path, replace)
@@ -286,6 +291,12 @@ class ExcelSink(_FileSink):
         self._genes: Counter = Counter()
         self._flags: Counter = Counter()
         self._past_excel_limit = 0
+        # The writer makes one sheet at a time, so the Links rows wait in a private file beside the output.
+        self._links_path = self.final_path.with_name(self.final_path.name + ".links.incomplete")
+        self._links_spool = None
+        self._link_rows = 0
+        self._link_urls = 0
+        self._links_left_out = 0
 
     def write(self, record: dict, prefix: dict | None = None) -> None:
         self.rows += 1
@@ -299,6 +310,7 @@ class ExcelSink(_FileSink):
             self._past_excel_limit += 1
         else:
             self._book.write_row([row.get(name) for name in self.columns], cell_styles=styles)
+            self._keep_links(record, row)
         self._levels[label or "Not annotated"] += 1
         self._effects[row.get("effect") or "not annotated"] += 1
         if row.get("gene") and label in ("High", "Medium"):
@@ -307,6 +319,33 @@ class ExcelSink(_FileSink):
             self._flags[flag] += 1
         if label in ("High", "Medium", "Review") and len(self._top) < _MAX_PRIORITY_ROWS:
             self._top.append({name: row.get(name) for name in _PRIORITY_SHEET})
+
+    def _keep_links(self, record: dict, row: dict) -> None:
+        """One Links row per database for this result, numbered as it is in All results."""
+        for link in record.get("links") or []:
+            if self._link_rows >= self.links_limit - 1:
+                self._links_left_out += 1
+                continue
+            if self._links_spool is None:
+                descriptor = os.open(self._links_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                self._links_spool = os.fdopen(descriptor, "w", encoding="utf-8", newline="\n")
+            label = LINK_LABELS.get(link.get("label"), link.get("label"))
+            values = [self.rows, row.get("input"), row.get("gene"), row.get("hgvs_c"), row.get("hgvs_p"), link.get("name"), link.get("url"), label, link.get("note")]
+            self._links_spool.write(json.dumps(values, ensure_ascii=False) + "\n")
+            self._link_rows += 1
+            self._link_urls += 1 if link.get("url") else 0
+
+    def _write_links(self) -> None:
+        book = self._book
+        book.add_sheet("Links", [8, 24, 10, 26, 22, 20, 60, 14, 50], table=True)
+        book.write_row(LINKS_HEADER, style=xlsx.HEADER)
+        if self._links_spool is None:
+            return
+        self._links_spool.close()
+        with open(self._links_path, encoding="utf-8") as handle:
+            for line in handle:
+                book.write_row(json.loads(line))
+        os.remove(self._links_path)
 
     def _write_priority(self) -> None:
         order = {"High": 0, "Medium": 1, "Review": 2}
@@ -328,6 +367,13 @@ class ExcelSink(_FileSink):
                 [f"{self._past_excel_limit:,} results are not in All results, because Excel opens at most {self.row_limit:,} rows. results.tsv has every result."],
                 style=xlsx.BOLD,
             )
+        if self._links_left_out:
+            book.write_row(
+                [f"{self._links_left_out:,} links are not in the Links sheet, because Excel opens at most {self.links_limit:,} rows. The link columns of results.tsv have them all."],
+                style=xlsx.BOLD,
+            )
+        if self._link_urls > xlsx.MAX_LINKS_PER_SHEET:
+            book.write_row([f"Links past the first {xlsx.MAX_LINKS_PER_SHEET:,} are written as text, because Excel allows no more per sheet."], style=xlsx.BOLD)
         for line in self.context.notices:
             book.write_row([line], style=xlsx.BOLD)
         book.write_row([])
@@ -369,11 +415,12 @@ class ExcelSink(_FileSink):
             book.write_row([flag, count, meaning, action])
 
     def close(self) -> None:
+        self._write_links()
         self._write_priority()
         self._write_summary()
         self._write_sources()
         self._write_flags()
-        self._book.close(order=["Summary", "Priority", "All results", "Warnings explained", "Data versions"])
+        self._book.close(order=["Summary", "Priority", "All results", "Links", "Warnings explained", "Data versions"])
         self._finish()
 
 

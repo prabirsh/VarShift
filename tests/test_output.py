@@ -13,6 +13,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+from tests.test_integration import WithData
 from varshift import report
 from varshift.config import is_windows_mount
 from varshift.errors import InputError
@@ -212,6 +213,56 @@ class ExcelCells(Folder):
         path = self._write([[f"row{i}", i] for i in range(5000)])
         self.assertEqual(len(self._cells(path)), 10000)
 
+    def test_links_past_the_limit_are_plain_text_and_not_kept_in_memory(self):
+        with mock.patch("varshift.xlsx.MAX_LINKS_PER_SHEET", 1):
+            path = self.root / "t.xlsx"
+            writer = XlsxWriter(path)
+            writer.add_sheet("Sheet")
+            writer.write_row(["https://www.ncbi.nlm.nih.gov/gene/673", "https://www.uniprot.org/uniprotkb/P15056"])
+            self.assertEqual(len(writer._links), 1)
+            writer.close()
+        cells = self._cells(path)
+        self.assertEqual([cell.get("s") for cell in cells], ["2", None])
+        with zipfile.ZipFile(path) as archive:
+            self.assertNotIn("uniprot", archive.read("xl/worksheets/_rels/sheet1.xml.rels").decode())
+
+
+def read_sheets(path):
+    """Each sheet's rows, by sheet name in tab order. A row holds the values of the cells that have one."""
+    with zipfile.ZipFile(path) as archive:
+        book = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+        rels = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+        targets = {rel.get("Id"): rel.get("Target") for rel in rels}
+        sheets = {}
+        key = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        for sheet in book.find(f"{MAIN}sheets"):
+            root = ElementTree.fromstring(archive.read("xl/" + targets[sheet.get(key)].lstrip("/").removeprefix("xl/")))
+            rows = []
+            for row in root.findall(f".//{MAIN}row"):
+                values = []
+                for cell in row:
+                    text = cell.find(f"{MAIN}is/{MAIN}t")
+                    number = cell.find(f"{MAIN}v")
+                    values.append(text.text if text is not None else number.text if number is not None else None)
+                rows.append(values)
+            sheets[sheet.get("name")] = rows
+    return sheets
+
+
+def sheet_links(path, name):
+    """The hyperlink targets of one sheet, found by its name."""
+    with zipfile.ZipFile(path) as archive:
+        book = ElementTree.fromstring(archive.read("xl/workbook.xml"))
+        key = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        number = next(sheet.get(key) for sheet in book.find(f"{MAIN}sheets") if sheet.get("name") == name).removeprefix("rId")
+        rels_name = f"xl/worksheets/_rels/sheet{number}.xml.rels"
+        if rels_name not in archive.namelist():
+            return []
+        return [rel.get("Target") for rel in ElementTree.fromstring(archive.read(rels_name))]
+
+
+LINKS_HEADER = ["Result", "Input", "Gene", "c.", "p.", "Database", "Link", "Label", "Note"]
+
 
 class Workbook(Folder):
     def setUp(self):
@@ -223,27 +274,51 @@ class Workbook(Folder):
         sink.close()
 
     def _sheets(self):
-        with zipfile.ZipFile(self.path) as archive:
-            book = ElementTree.fromstring(archive.read("xl/workbook.xml"))
-            rels = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
-            targets = {rel.get("Id"): rel.get("Target") for rel in rels}
-            sheets = {}
-            key = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-            for sheet in book.find(f"{MAIN}sheets"):
-                root = ElementTree.fromstring(archive.read("xl/" + targets[sheet.get(key)].lstrip("/").removeprefix("xl/")))
-                rows = []
-                for row in root.findall(f".//{MAIN}row"):
-                    values = []
-                    for cell in row:
-                        text = cell.find(f"{MAIN}is/{MAIN}t")
-                        number = cell.find(f"{MAIN}v")
-                        values.append(text.text if text is not None else number.text if number is not None else None)
-                    rows.append(values)
-                sheets[sheet.get("name")] = rows
-        return sheets
+        return read_sheets(self.path)
 
     def test_sheets_come_in_the_order_people_read_them(self):
-        self.assertEqual(list(self._sheets()), ["Summary", "Priority", "All results", "Warnings explained", "Data versions"])
+        self.assertEqual(list(self._sheets()), ["Summary", "Priority", "All results", "Links", "Warnings explained", "Data versions"])
+
+    def test_the_links_sheet_has_one_row_per_result_and_database(self):
+        rows = self._sheets()["Links"]
+        self.assertEqual(rows[0], LINKS_HEADER)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual(rows[1][:8], ["1", RECORD["input"]["raw"], "AAA", "NM_004333.6:c.1799T>A", "NP_004324.2:p.Val600Glu", "ClinVar", RECORD["links"][0]["url"], "confirmed ID"])
+        self.assertEqual([row[0] for row in rows[1:]], ["1", "2", "3", "4", "5"])
+        self.assertEqual(sheet_links(self.path, "Links"), [RECORD["links"][0]["url"]] * 5)
+        self.assertEqual(list(self.root.glob("*.incomplete")), [])
+
+    def test_links_follow_the_results_in_all_results(self):
+        self.path = self.root / "big.xlsx"
+        with mock.patch.object(ExcelSink, "row_limit", 3):
+            sink = open_file_sink(self.path, self.context)
+            for _ in range(5):
+                sink.write(with_priority(3, "Review"))
+            sink.close()
+        self.assertEqual(len(self._sheets()["Links"]), 3, "the header and the links of the two results in All results")
+
+    def test_links_past_excels_row_limit_are_left_to_the_tsv(self):
+        self.path = self.root / "many.xlsx"
+        with mock.patch.object(ExcelSink, "links_limit", 3):
+            sink = open_file_sink(self.path, self.context)
+            for _ in range(5):
+                sink.write(with_priority(3, "Review"))
+            sink.close()
+        sheets = self._sheets()
+        self.assertEqual(len(sheets["Links"]), 3)
+        summary = [row[0] for row in sheets["Summary"] if row]
+        self.assertTrue(any(text and text.startswith("3 links are not in the Links sheet") for text in summary), summary)
+
+    def test_links_past_the_hyperlink_limit_are_text_and_the_summary_says_so(self):
+        self.path = self.root / "text.xlsx"
+        with mock.patch("varshift.xlsx.MAX_LINKS_PER_SHEET", 2):
+            sink = open_file_sink(self.path, self.context)
+            for _ in range(5):
+                sink.write(with_priority(3, "Review"))
+            sink.close()
+        self.assertEqual(len(sheet_links(self.path, "Links")), 2)
+        summary = [row[0] for row in self._sheets()["Summary"] if row]
+        self.assertIn("Links past the first 2 are written as text, because Excel allows no more per sheet.", summary)
 
     def test_priority_sheet_is_sorted_and_leaves_out_low(self):
         rows = self._sheets()["Priority"]
@@ -277,6 +352,26 @@ class Workbook(Folder):
         self.assertTrue(any(text and text.startswith("3 results are not in All results") for text in summary), summary)
         counts = {row[0]: row[1] for row in sheets["Summary"] if len(row) > 1}
         self.assertEqual(counts["Review"], "5", "the counts still include every result")
+
+
+class LinksOfRealResults(WithData):
+    def test_every_link_of_every_result_is_listed_and_clickable(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        path = Path(folder.name) / "two.xlsx"
+        records = self.annotator.annotate_text("BRAF V600E", "hg19") + self.annotator.annotate_text("KRAS G12D", "hg19")
+        sink = open_file_sink(path, ReportContext(input_name="two queries", versions=self.store.versions()))
+        for record in records:
+            sink.write(record)
+        sink.close()
+        rows = read_sheets(path)["Links"]
+        self.assertEqual(rows[0], LINKS_HEADER)
+        self.assertEqual(len(rows) - 1, sum(len(record["links"]) for record in records))
+        clinvar = "https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/"
+        self.assertIn(["1", "BRAF V600E", "BRAF"], [row[:3] for row in rows if clinvar in row])
+        self.assertIn(clinvar, sheet_links(path, "Links"))
+        missing = next(link for record in records for link in record["links"] if not link.get("url"))
+        self.assertTrue(any(missing["name"] in row and missing["note"] in row for row in rows), missing)
 
 
 class HtmlReport(Folder):

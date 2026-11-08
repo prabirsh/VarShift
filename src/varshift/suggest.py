@@ -72,6 +72,13 @@ def suggest(store, raw: str, error: Exception, build: str | None = None, fast_on
     return None
 
 
+def option_texts(question: Question | None) -> list[str]:
+    """What to type for each option, with build= when it is on the other build."""
+    if question is None:
+        return []
+    return [option.text + (f" build={option.build}" if option.build else "") for option in question.options]
+
+
 # 1. A protein change with no ALT: BRAF V600
 def _missing_alt(store, text, error, build, fast_only, gene) -> Question | None:
     match = _RESIDUE_RE.match(text)

@@ -14,12 +14,14 @@ from .builds import canonical_contig, parse_build
 from .errors import DataError, InputError, ReferenceMismatch, VarShiftError
 from .resolver import Candidate
 from .store import DataStore
+from .suggest import option_texts, suggest
 from .tidy import tidy
 from .variant import normalize
 from .vcf import VcfReader
 
 log = logging.getLogger("varshift")
 _CHUNK = 200
+MAX_SUGGESTED = 500  # failing lines of a list that get suggestions
 
 
 def _error_record(raw: str, kind: str, build: str | None, message: str, flag: str, extra: dict | None = None) -> dict:
@@ -181,8 +183,14 @@ def annotate_lines(
             counts["errors"] += 1
             reading = tidy(text, gene)
             extra = {"read_as": reading.text if reading.changed else "", "read_as_notes": list(reading.notes), "mode": mode}
-            writer.write(_error_record(text, "list", build, str(exc), "not_annotated", extra))
-            log.warning("%s %d: %s", label, number, exc)
+            record = _error_record(text, "list", build, str(exc), "not_annotated", extra)
+            # Only the quick suggestions, and only for the first failures, so a broken file can't run for hours.
+            texts = option_texts(suggest(annotator.store, text, exc, build, fast_only=True, gene=gene)) if counts["errors"] <= MAX_SUGGESTED else []
+            if texts:
+                record["suggestions"] = texts
+                counts["with_a_suggestion"] += 1
+            writer.write(record)
+            log.warning("%s %d: %s%s", label, number, exc, f" (did you mean {texts[0]}?)" if texts else "")
     return counts
 
 

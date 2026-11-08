@@ -20,7 +20,7 @@ from .config import default_data_dir, is_windows_mount, load_settings, resolve_d
 from .errors import InputError, ReferenceMismatch, ResolveError, SetupError, VarShiftError
 from .output import ReportContext, ReportFolder, ScreenSink, format_of, open_file_sink, render_card
 from .store import DataStore
-from .suggest import suggest
+from .suggest import option_texts, suggest
 from .term import Terminal
 from .updates import check_in_background, clear_applied, notice_lines, read_status
 from .vcf import looks_like_vcf
@@ -167,8 +167,7 @@ def _suggest_instead(annotator: Annotator, text: str, error: VarShiftError, valu
     if not (on_screen and term.interactive and question is not None and question.options):
         _report(error)
         if question is not None and question.options:
-            choices = [option.text + (f" build={option.build}" if option.build else "") for option in question.options[:5]]
-            print(f"Did you mean: {', '.join(choices)}", file=sys.stderr)
+            print(f"Did you mean: {', '.join(option_texts(question)[:5])}", file=sys.stderr)
         else:
             print(question.text if question is not None else FORMAT_HINT, file=sys.stderr)
         return None
@@ -226,7 +225,9 @@ def _show_queries(annotator: Annotator, queries: list[str], values: Values, mode
         try:
             answer = decide(annotator.annotate_text(text, build, gene, mode))
         except VarShiftError as exc:
-            term.write(error_line(number, text, str(exc), term, width) + "\n")
+            texts = option_texts(suggest(annotator.store, text, exc, build, fast_only=True, gene=gene))
+            message = f"did you mean {texts[0]}? ({exc})" if texts else str(exc)
+            term.write(error_line(number, text, message, term, width) + "\n")
             continue
         example = example or text
         term.write(summary_line(number, answer, term, width) + "\n")
