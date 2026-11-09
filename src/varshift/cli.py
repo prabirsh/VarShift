@@ -15,13 +15,16 @@ from .advanced import ACCEPT, ALIAS, DATABASES, DOWNLOAD, OWN_FILE, get_database
 from .annotate import Annotator
 from .answer import Answer, choice_table, decide, error_line, render_answer, render_choices, summary_line
 from .batch import annotate_lines, annotate_list, annotate_vcf, split_queries, vcf_columns
+from .builds import parse_build
 from .commandline import COMMANDS, Values, parse, render_help
-from .config import default_data_dir, is_windows_mount, load_settings, resolve_data_dir, save_setting
-from .errors import InputError, ReferenceMismatch, ResolveError, SetupError, VarShiftError
-from .output import ReportContext, ReportFolder, ScreenSink, format_of, open_file_sink, render_card
+from .config import default_data_dir, forget_setting, is_windows_mount, load_settings, resolve_data_dir, save_setting
+from .errors import DataError, InputError, ReferenceMismatch, ResolveError, SetupError, VarShiftError
+from .examples import render_examples
+from .output import ReportContext, ReportFolder, ScreenSink, default_folder, format_of, open_file_sink, render_card
+from .session import Session
 from .store import DataStore
-from .suggest import option_texts, suggest
-from .term import Terminal
+from .suggest import apply_choice, option_texts, suggest
+from .term import SETTINGS, Terminal
 from .updates import check_in_background, clear_applied, notice_lines, read_status
 from .vcf import looks_like_vcf
 
@@ -40,7 +43,10 @@ def main(argv: list[str] | None = None) -> int:
             stream.reconfigure(errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
     try:
-        values = parse(sys.argv[1:] if argv is None else argv)
+        arguments = sys.argv[1:] if argv is None else argv
+        if not arguments and _at_a_terminal():
+            return _start(Values("start"))
+        values = parse(arguments)
         return HANDLERS[values.command](values)
     except VarShiftError as exc:
         _report(exc)
@@ -71,6 +77,51 @@ def _help(values: Values) -> int:
 def _version(values: Values) -> int:
     print(f"VarShift {__version__}")
     return 0
+
+
+def _examples(values: Values) -> int:
+    term = _terminal(values)
+    term.write(render_examples(term))
+    return 0
+
+
+def _at_a_terminal() -> bool:
+    """For varshift with nothing after it: open the guided start only when a person is there."""
+    try:
+        return _terminal(Values("start")).interactive
+    except InputError:
+        return False  # a bad saved colour; the command list still shows, and start would say what to fix
+
+
+def _start(values: Values) -> int:
+    term = _terminal(values)
+    if not term.interactive:
+        print("varshift start needs a terminal. For scripts and pipes, use: varshift annotate", file=sys.stderr)
+        return 1
+    mode = _mode(values)
+    build = parse_build(values.get("build")) if values.get("build") else None
+    data_dir = resolve_data_dir(values.get("data"))
+    try:
+        store = DataStore(data_dir)
+    except DataError:
+        pass  # the session offers the demo data or setup
+    else:
+        try:
+            for line in notice_lines(data_dir, store.manifest):
+                term.write(line + "\n")
+            check_in_background(data_dir, store.manifest)
+        finally:
+            store.close()
+    session = Session(
+        # Opened again after setup, which may have chosen another folder.
+        lambda: DataStore(resolve_data_dir(values.get("data"))),
+        term,
+        Path.cwd(),
+        build=build,
+        mode=mode,
+        setup=lambda: _setup(Values("setup")),
+    )
+    return session.run()
 
 
 # annotate
@@ -139,22 +190,34 @@ _MODES = {"tumour": "tumour", "tumor": "tumour", "inherited": "inherited", "none
 
 def _mode(values: Values) -> str | None:
     """mode=, else the saved setting. None when there is no mode."""
-    given = values.get("mode") or load_settings().get("mode") or "none"
-    if given.lower() not in _MODES:
-        raise InputError(f"mode must be tumour, inherited or none, not {given!r}")
-    return _MODES[given.lower()]
+    if values.get("mode"):
+        return _mode_named(values.get("mode"))
+    saved = load_settings().get("mode") or "none"
+    try:
+        return _mode_named(saved)
+    except InputError:
+        raise InputError(f"the saved mode {saved!r} isn't tumour, inherited or none; to clear it: varshift config mode=none") from None
+
+
+def _mode_named(word: str) -> str | None:
+    if word.lower() not in _MODES:
+        raise InputError(f"mode must be tumour, inherited or none, not {word!r}")
+    return _MODES[word.lower()]
 
 
 def _terminal(values: Values) -> Terminal:
     """The screen VarShift writes to, and asks on only when a person is there. Tests patch this."""
-    setting = values.get("color") or load_settings().get("color") or "auto"
+    given = values.get("color")
+    setting = given or load_settings().get("color") or "auto"
     try:
         return Terminal.detect(setting)
     except ValueError:
-        raise InputError(f"color must be auto, yes or no, not {setting!r}") from None
+        if given:
+            raise InputError(f"color must be auto, yes or no, not {setting!r}") from None
+        raise InputError(f"the saved colour {setting!r} isn't auto, yes or no; to reset it: varshift config color=auto") from None
 
 
-FORMAT_HINT = "Not sure of the format? See: varshift help annotate"
+FORMAT_HINT = "Not sure of the format? See: varshift examples"
 
 
 def _suggest_instead(annotator: Annotator, text: str, error: VarShiftError, values: Values, mode, term: Terminal, on_screen: bool):
@@ -178,13 +241,7 @@ def _suggest_instead(annotator: Annotator, text: str, error: VarShiftError, valu
         return None
     option = question.options[picked[0]]
     # Annotated once, as if it had been typed. If it fails too, that error is shown as it is.
-    records = annotator.annotate_text(option.text, option.build or build, gene, mode)
-    source = records[0]["input"]  # shared by every record of this query
-    source["read_as"] = source["read_as"] or option.text
-    chosen = ["chosen from the suggestions"] + ([f"on {option.build}"] if option.build else [])
-    source["read_as_notes"] = list(source.get("read_as_notes") or []) + chosen
-    source["raw"] = text.strip()
-    return records
+    return apply_choice(annotator.annotate_text(option.text, option.build or build, gene, mode), text, option)
 
 
 def _show_answer(records: list[dict], values: Values, mode: str | None, term: Terminal) -> int:
@@ -268,16 +325,7 @@ def _sink_for_file(source: str, values: Values, context: ReportContext):
         return ScreenSink(_screen_format(values), context)
     if out and format_of(out) is not None:
         return open_file_sink(out, context, values.has("replace"))
-    return ReportFolder(out or _default_folder(source), context, values.has("replace"))
-
-
-def _default_folder(source: str) -> str:
-    name = Path(source).name
-    for ending in (".vcf.gz", ".vcf.bgz", ".vcf", ".txt", ".tsv"):
-        if name.lower().endswith(ending):
-            name = name[: -len(ending)]
-            break
-    return f"{name}_varshift"
+    return ReportFolder(out or default_folder(source), context, values.has("replace"))
 
 
 def _finish_file(sink, counts) -> int:
@@ -618,10 +666,11 @@ def _whole_number(values: Values, name: str, default: int) -> int:
 def _explain(values: Values) -> int:
     from .explain import run_explain
 
+    mode = _mode(values)
     data_dir = resolve_data_dir(values.get("data"))
     store = DataStore(data_dir)
     try:
-        return run_explain(store, values.positional, values.get("build"), values.get("gene") or "")
+        return run_explain(store, values.positional, values.get("build"), values.get("gene") or "", mode)
     finally:
         store.close()
 
@@ -644,21 +693,36 @@ def _demo(values: Values) -> int:
 
 
 def _config(values: Values) -> int:
-    updates = values.get("updates")
+    # Every value is checked before any is saved, so a mistake changes nothing.
+    updates, mode, color = values.get("updates"), values.get("mode"), values.get("color")
+    if updates is not None and updates not in ("on", "off"):
+        raise InputError("updates must be on or off")
+    mode_word = _mode_named(mode) if mode is not None else None
+    if color is not None and color.lower() not in SETTINGS:
+        raise InputError(f"color must be auto, yes or no, not {color!r}")
     if updates is not None:
-        if updates not in ("on", "off"):
-            raise InputError("updates must be on or off")
         save_setting("updates", updates)
     if values.get("data"):
         save_setting("data_dir", str(resolve_data_dir(values.get("data"))))
+    if mode is not None:
+        if mode_word is None:
+            forget_setting("mode")
+        else:
+            save_setting("mode", mode_word)
+    if color is not None:
+        save_setting("color", color.lower())
     settings = load_settings()
     print(f"Data folder            {settings.get('data_dir', default_data_dir())}")
     print(f"Quick update check     {settings.get('updates', 'on')}")
+    print(f"Mode                   {settings.get('mode') or 'none'}")
+    print(f"Colour                 {settings.get('color') or 'auto'}")
     return 0
 
 
 HANDLERS = {
     "annotate": _annotate,
+    "start": _start,
+    "examples": _examples,
     "setup": _setup,
     "databases": _databases,
     "add": _add,

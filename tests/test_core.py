@@ -119,6 +119,15 @@ class GenomeReading(unittest.TestCase):
         with self.assertRaises(DataError):
             write_fai(path)
 
+    def test_the_rcrs_on_hg19_without_hg38_says_what_to_install(self):
+        genome = Genome("hg19", write_fasta(self.root, "e.fa", {"chrM": "ACGT" * 10}))
+        self.addCleanup(genome.close)
+        for attempt in (lambda: normalize(genome, "chrMT", 5, "A", "G"), lambda: genome.require("chrMT")):
+            with self.assertRaises(DataError) as caught:
+                attempt()
+            self.assertIn("varshift setup build=hg38", str(caught.exception))
+        genome.require("chrM")  # hg19's own chrM is there
+
 
 class Normalisation(unittest.TestCase):
     def setUp(self):

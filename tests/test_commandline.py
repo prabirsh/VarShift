@@ -74,10 +74,68 @@ class Settings(unittest.TestCase):
         os.environ.pop("VARSHIFT_DATA", None)
 
 
+class FakeTty(io.StringIO):
+    def isatty(self):
+        return True
+
+
 class Config(Settings):
+    def _config(self, *words):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["config", *words])
+        return code, out.getvalue(), err.getvalue()
+
     def test_a_setting_is_remembered(self):
         save_setting("updates", "off")
         self.assertEqual(load_settings()["updates"], "off")
+
+    def test_the_mode_is_saved_checked_and_cleared(self):
+        code, out, _ = self._config("mode=tumour")
+        self.assertEqual(code, 0)
+        self.assertEqual(load_settings()["mode"], "tumour")
+        self.assertRegex(out, r"Mode\s+tumour")
+        self.assertEqual(self._config("mode=tumor")[0], 0)
+        self.assertEqual(load_settings()["mode"], "tumour")
+        code, _, err = self._config("mode=bogus")
+        self.assertEqual(code, 1)
+        for word in ("tumour", "inherited", "none"):
+            self.assertIn(word, err)
+        self.assertEqual(load_settings()["mode"], "tumour")
+        code, out, _ = self._config("mode=none")
+        self.assertEqual(code, 0)
+        self.assertNotIn("mode", load_settings())
+        self.assertRegex(out, r"Mode\s+none")
+
+    def test_the_colour_is_saved_and_checked(self):
+        self.assertEqual(self._config("color=no")[0], 0)
+        self.assertEqual(load_settings()["color"], "no")
+        code, _, err = self._config("color=bogus")
+        self.assertEqual(code, 1)
+        self.assertIn("auto, yes or no", err)
+        self.assertEqual(load_settings()["color"], "no")
+        code, out, _ = self._config()
+        self.assertRegex(out, r"Colour\s+no")
+
+    def test_the_saved_colour_is_used_and_color_on_a_command_wins(self):
+        environ = {key: value for key, value in os.environ.items() if key != "NO_COLOR"}
+        with mock.patch.dict(os.environ, environ, clear=True), mock.patch("sys.stdin", FakeTty()), mock.patch("sys.stdout", FakeTty()):
+            save_setting("color", "no")
+            self.assertFalse(cli._terminal(parse(["annotate", "BRAF V600E"])).color)
+            save_setting("color", "yes")
+            self.assertTrue(cli._terminal(parse(["annotate", "BRAF V600E"])).color)
+            self.assertFalse(cli._terminal(parse(["annotate", "BRAF V600E", "color=no"])).color)
+
+    def test_a_bad_saved_value_says_how_to_put_it_right(self):
+        save_setting("mode", "weird")
+        with self.assertRaises(InputError) as caught:
+            cli._mode(parse(["annotate", "BRAF V600E"]))
+        self.assertIn("varshift config mode=none", str(caught.exception))
+        self.assertEqual(cli._mode(parse(["annotate", "BRAF V600E", "mode=inherited"])), "inherited")
+        save_setting("color", "purple")
+        with self.assertRaises(InputError) as caught:
+            cli._terminal(parse(["annotate", "BRAF V600E"]))
+        self.assertIn("varshift config color=auto", str(caught.exception))
 
     def test_data_folder_order(self):
         save_setting("data_dir", str(self.root / "saved"))

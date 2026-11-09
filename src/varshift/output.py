@@ -453,6 +453,16 @@ def open_file_sink(path: str | Path, context: ReportContext, replace: bool = Fal
     return _SINKS[chosen](path, context, replace)
 
 
+def default_folder(source: str) -> str:
+    """The results folder for an input file: sample.vcf.gz gives sample_varshift."""
+    name = Path(source).name
+    for ending in (".vcf.gz", ".vcf.bgz", ".vcf", ".txt", ".tsv"):
+        if name.lower().endswith(ending):
+            name = name[: -len(ending)]
+            break
+    return f"{name}_varshift"
+
+
 class ReportFolder:
     """The default for a file input: the report, the workbook and a TSV, side by side."""
 

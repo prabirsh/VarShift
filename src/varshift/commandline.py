@@ -56,6 +56,17 @@ COMMANDS: dict[str, Command] = {
             "varshift annotate variants.txt build=hg19 out=results.xlsx",
         ),
     ),
+    "start": Command(
+        "Open the guided start: type variants, see answers, save them (varshift alone does this too)",
+        options={
+            "build": "hg19 or hg38, for positions typed without one",
+            "mode": "tumour, inherited or none: which evidence and links answers show first",
+            "color": "auto, yes or no: colour on the screen",
+            **DATA_OPTION,
+        },
+        examples=("varshift start", "varshift start build=hg19 mode=tumour"),
+    ),
+    "examples": Command("Show how to write a variant, with a working example of every form", examples=("varshift examples",)),
     "setup": Command(
         "Choose hg19, hg38 or both, then download and build the databases",
         options={
@@ -102,7 +113,12 @@ COMMANDS: dict[str, Command] = {
         "INPUT",
         "a description such as 'BRAF V600E'",
         required=True,
-        options={"build": "hg19 or hg38", "gene": "gene to use when the description has none", **DATA_OPTION},
+        options={
+            "build": "hg19 or hg38",
+            "gene": "gene to use when the description has none",
+            "mode": "tumour, inherited or none, recorded with the result as for annotate",
+            **DATA_OPTION,
+        },
         examples=('varshift explain "BRAF V600E" build=hg19',),
     ),
     "selftest": Command("Run the fixed list of known variants", options=DATA_OPTION),
@@ -115,7 +131,16 @@ COMMANDS: dict[str, Command] = {
         options={"records": "VCF records to test with (default 3000)", "report": "write the result to this Markdown file", **DATA_OPTION},
     ),
     "demo": Command("Run the bundled demo with no download", options={"out": "folder for the results (default demo_output)", "demodir": "the demo folder, if it is not beside the code"}, flags={"replace": "replace existing results"}),
-    "config": Command("Show or change settings", options={"updates": "on or off: the quick check for new database versions", "data": "the data folder to use from now on"}),
+    "config": Command(
+        "Show or change settings",
+        options={
+            "updates": "on or off: the quick check for new database versions",
+            "data": "the data folder to use from now on",
+            "mode": "tumour, inherited or none: the mode annotate uses when mode= isn't given",
+            "color": "auto, yes or no: colour on the screen when color= isn't given",
+        },
+        examples=("varshift config mode=tumour", "varshift config color=no"),
+    ),
     "help": Command("Show help for a command", "COMMAND", "the command to explain"),
     "version": Command("Show the version"),
 }

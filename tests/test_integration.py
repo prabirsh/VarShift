@@ -212,6 +212,15 @@ class TidiedInput(WithData):
         self.assertEqual(first["input"]["mode"], "inherited")
 
 
+def isolate_settings(test):
+    """Read and save settings in a folder of the test's own, never the real ones."""
+    folder = tempfile.TemporaryDirectory()
+    test.addCleanup(folder.cleanup)
+    patcher = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": folder.name})
+    patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class NoTyping:
     """Standard input that says it is a terminal but must never be read."""
 
@@ -230,6 +239,9 @@ class NoTyping:
 class ScreenAnswers(WithData):
     """What varshift annotate prints for one description, or a ; list, with no out= or format=."""
 
+    def setUp(self):
+        isolate_settings(self)
+
     def _cli(self, *args, terminal=None):
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.ExitStack() as stack:
@@ -238,8 +250,28 @@ class ScreenAnswers(WithData):
             stack.enter_context(mock.patch("sys.stdin", NoTyping()))
             if terminal is not None:
                 stack.enter_context(mock.patch.object(cli, "_terminal", return_value=terminal))
-            code = main(list(args) + [f"data={self.data}"])
+            # config has a data= option of its own, which would save the folder rather than use it.
+            code = main(list(args) + ([] if args[0] == "config" else [f"data={self.data}"]))
         return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_a_saved_mode_is_used_when_none_is_given(self):
+        self.assertEqual(self._cli("config", "mode=tumour")[0], 0)
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19")
+        self.assertIn("OncoKB", out.split("Check it")[1])
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "format=json")
+        self.assertEqual(json.loads(out)[0]["input"]["mode"], "tumour")
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19", "mode=none")
+        self.assertNotIn("OncoKB", out.split("Check it")[1])
+        self.assertEqual(self._cli("config", "mode=none")[0], 0)
+        _, out, _ = self._cli("annotate", "BRAF V600E", "build=hg19")
+        self.assertNotIn("OncoKB", out.split("Check it")[1])
+
+    def test_explain_takes_and_shows_the_mode(self):
+        code, out, err = self._cli("explain", "BRAF V600E", "build=hg19", "mode=inherited")
+        self.assertEqual(code, 0, err)
+        self.assertRegex(out, r"Mode\s+inherited")
+        self.assertRegex(self._cli("explain", "BRAF V600E", "build=hg19")[1], r"Mode\s+none")
+        self.assertEqual(self._cli("explain", "BRAF V600E", "build=hg19", "mode=bogus")[0], 1)
 
     def test_one_clear_answer_with_why(self):
         code, out, err = self._cli("annotate", "BRAF V600E", "build=hg19")
@@ -568,6 +600,7 @@ class Mitochondria(WithData):
 
 class FileRuns(WithData):
     def setUp(self):
+        isolate_settings(self)
         self.out = tempfile.TemporaryDirectory()
         self.addCleanup(self.out.cleanup)
         self.root = Path(self.out.name)

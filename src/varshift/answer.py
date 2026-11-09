@@ -109,7 +109,7 @@ def apply(answer: Answer) -> list[dict]:
 
 
 # The card: one answer, short enough to read at a glance, with the links to check it.
-def render_answer(answer: Answer, term, mode: str | None = None, links_all: bool = False) -> str:
+def render_answer(answer: Answer, term, mode: str | None = None, links_all: bool = False, also_hint: str = "show=all") -> str:
     """The best candidate's card. A choice has no best candidate, so it gets the choice table."""
     if answer.best is None:
         return render_choices(answer, term)
@@ -135,7 +135,7 @@ def render_answer(answer: Answer, term, mode: str | None = None, links_all: bool
         lines += _field(term, "Advanced", f"{len(advanced)} values from the advanced databases. To see them: show=all")
     if answer.kind == "clear":
         lines += _field(term, "Why this", _DOT.join(answer.why))
-        lines += _field(term, "Also", _also_line(answer, record))
+        lines += _field(term, "Also", _also_line(answer, record, also_hint))
     lines += _link_lines(term, record.get("links") or [], mode, links_all)
     for flag in record.get("flags") or []:
         if flag not in _NOT_NOTED:
@@ -246,11 +246,11 @@ _EVIDENCE = {
 }
 
 
-def _also_line(answer: Answer, record: dict) -> str:
+def _also_line(answer: Answer, record: dict, hint: str) -> str:
     count = len(answer.also)
     gives = _short((record.get("hgvs") or {}).get("p")) or answer.raw
     which = "it" if count == 1 else "them"
-    return f"{count} other DNA change{'s give' if count > 1 else ' gives'} {gives}: {also_text(answer)}. To see {which}: show=all"
+    return f"{count} other DNA change{'s give' if count > 1 else ' gives'} {gives}: {also_text(answer)}. To see {which}: {hint}"
 
 
 def _link_lines(term, links: list[dict], mode: str | None, links_all: bool) -> list[str]:

@@ -58,6 +58,7 @@ def normalize(genome: Genome, contig: str, pos: int, ref: str, alt: str) -> Vari
     length = contig_length(contig, genome.build)
     if pos < 1 or (length is not None and pos + len(ref) - 1 > length):
         raise InputError(f"position {contig}:{pos} is outside the contig on {genome.build}")
+    genome.require(contig)
     if not genome.covers(contig, pos - 1, pos - 1 + len(ref)):
         raise InputError(f"{contig}:{pos} is not covered by the installed {genome.build} reference")
     found = genome.fetch(contig, pos - 1, pos - 1 + len(ref))

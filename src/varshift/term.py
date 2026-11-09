@@ -86,7 +86,7 @@ class Terminal:
     def choose(self, question: str, options: list[str], allow_all: bool = False) -> list[int] | None:
         """Numbered options. Returns the chosen positions from 0, or None when cancelled."""
         count = len(options)
-        lines = [question] + [f"  {number}  {option}" for number, option in enumerate(options, 1)]
+        lines = [question] + [f"{number:>3}  {option}" for number, option in enumerate(options, 1)]
         self.write("\n".join(lines) + "\n")
         if allow_all:
             prompt = f"Choose 1 to {count}, a for all, or Enter for the first: "

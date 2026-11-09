@@ -36,7 +36,7 @@ def _print_queries(entries: list[tuple[str, str]], started: float) -> None:
     print(f"    Time: {(time.perf_counter() - started) * 1000:.2f} ms")
 
 
-def run_explain(store: DataStore, text: str, build: str | None, gene: str) -> int:
+def run_explain(store: DataStore, text: str, build: str | None, gene: str, mode: str | None = None) -> int:
     store.sql_log = []
     annotator = Annotator(store)
     total = time.perf_counter()
@@ -80,5 +80,6 @@ def run_explain(store: DataStore, text: str, build: str | None, gene: str) -> in
     print(f"    Effect    {record['effect']['type']}")
     print(f"    ClinVar   {clinvar.get('id')}: {clinvar.get('classification') or clinvar.get('status')}")
     print(f"    Priority  {record['priority']['label']}: {'; '.join(record['priority']['reasons'])}")
+    print(f"    Mode      {mode or 'none'}")
     print(f"\nTotal: {(time.perf_counter() - total) * 1000:.1f} ms. Nothing left this computer.")
     return 0

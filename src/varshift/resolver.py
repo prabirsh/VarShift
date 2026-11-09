@@ -346,6 +346,7 @@ def _move_off_junction(genome: Genome, tx: Transcript, g_first: int, g_last: int
 
 def _apply_forward(genome: Genome, contig: str, start: int, end: int, dna: DnaChange) -> Variant:
     """Apply a forward-strand change to the 0-based half-open span [start, end)."""
+    genome.require(contig)
     if not genome.covers(contig, max(start - 1, 0), end):
         raise InputError(f"{contig}:{start + 1}-{end} is not covered by the installed {genome.build} reference")
     span = genome.fetch(contig, start, end)

@@ -105,6 +105,9 @@ class FastaFile:
         self._file.close()
 
 
+NEEDS_HG38_FOR_RCRS = "the mitochondrial rCRS sequence (NC_012920.1) comes with the hg38 reference; to add it: varshift setup build=hg38"
+
+
 class Genome:
     """Reference bases for one build, including the rCRS special case on hg19."""
 
@@ -127,9 +130,18 @@ class Genome:
     def fetch(self, contig: str, start: int, end: int) -> str:
         if contig == "chrMT":
             if self._rcrs is None:
-                raise DataError("the rCRS sequence needs the hg38 reference; run: varshift setup build=hg38")
+                raise DataError(NEEDS_HG38_FOR_RCRS)
             return self._rcrs.fetch("chrM", start, end)
         return self._fasta.fetch(contig, start, end)
+
+    def require(self, contig: str) -> None:
+        """Say plainly when a contig's sequence comes from a build that isn't installed.
+
+        On hg19, the rCRS (chrMT, NC_012920.1) is read from the hg38 file. Without it, a position there
+        would otherwise be reported as not covered, which doesn't say what to do.
+        """
+        if contig == "chrMT" and not self.has(contig):
+            raise DataError(NEEDS_HG38_FOR_RCRS)
 
     def close(self) -> None:
         self._fasta.close()

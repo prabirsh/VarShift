@@ -143,6 +143,15 @@ class Quiet(unittest.TestCase):
         self.assertFalse(Terminal(interactive=False, color=False, width=100, stdin=io.StringIO("more\n")).input_waiting())
 
 
+class ManyOptions(unittest.TestCase):
+    def test_options_line_up_past_nine(self):
+        terminal = ScriptedTerminal(answers=["12"])
+        self.assertEqual(terminal.choose("Which?", [f"option{n}" for n in range(1, 13)]), [11])
+        lines = [line for line in terminal.output.splitlines() if "option" in line]
+        self.assertEqual({line.index("option") for line in lines}, {5})
+        self.assertTrue(lines[0].startswith("  1  "))
+
+
 class Scripted(unittest.TestCase):
     def test_answers_in_order_and_records_what_was_shown(self):
         script = ScriptedTerminal(["BRAF V600E", "save"])

@@ -72,6 +72,16 @@ def suggest(store, raw: str, error: Exception, build: str | None = None, fast_on
     return None
 
 
+def apply_choice(records: list[dict], typed: str, option: Option) -> list[dict]:
+    """Records annotated from a chosen option: the input stays as typed, and Read as says what was chosen."""
+    source = records[0]["input"]  # shared by every record of one query
+    source["read_as"] = source["read_as"] or option.text
+    chosen = ["chosen from the suggestions"] + ([f"on {option.build}"] if option.build else [])
+    source["read_as_notes"] = list(source.get("read_as_notes") or []) + chosen
+    source["raw"] = typed.strip()
+    return records
+
+
 def option_texts(question: Question | None) -> list[str]:
     """What to type for each option, with build= when it is on the other build."""
     if question is None:

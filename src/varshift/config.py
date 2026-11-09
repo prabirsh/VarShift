@@ -28,6 +28,17 @@ def load_settings() -> dict:
 def save_setting(name: str, value) -> None:
     settings = load_settings()
     settings[name] = value
+    _write_settings(settings)
+
+
+def forget_setting(name: str) -> None:
+    """Go back to the default for one setting."""
+    settings = load_settings()
+    if settings.pop(name, None) is not None:
+        _write_settings(settings)
+
+
+def _write_settings(settings: dict) -> None:
     target = _config_file()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
