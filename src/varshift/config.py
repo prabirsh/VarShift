@@ -50,13 +50,20 @@ def default_data_dir() -> Path:
 
 def resolve_data_dir(explicit: str | None = None) -> Path:
     """The data= option, then $VARSHIFT_DATA, then the saved setting, then a default."""
+    return data_dir_and_source(explicit)[0]
+
+
+def data_dir_and_source(explicit: str | None = None) -> tuple[Path, str]:
+    """The data folder, and which of data=, VARSHIFT_DATA, saved or default decided it."""
     if explicit:
-        return _given_folder(explicit)
+        return _given_folder(explicit), "data="
     env = os.environ.get("VARSHIFT_DATA")
     if env:
-        return _given_folder(env)
+        return _given_folder(env), "VARSHIFT_DATA"
     saved = load_settings().get("data_dir")
-    return Path(saved).expanduser() if saved else default_data_dir()
+    if saved:
+        return Path(saved).expanduser(), "saved"
+    return default_data_dir(), "default"
 
 
 def _given_folder(text: str) -> Path:

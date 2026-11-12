@@ -11,17 +11,76 @@
 | Genomic | `NC_000007.13:g.140453136A>T`, `chr7:g.140453136A>T`, `7:g.140453134_140453136del`, `NC_012920.1:m.3243A>G` |
 | Position | `chr7-140453136-A-T`, `7-140453136-A-T`, `chr7:140453136:A:T`, `chr7:140453136 A>T`, `7 140453136 A T` |
 | dbSNP | `rs113488022`. Through ClinVar, or through dbSNP itself if you added it |
+| Several | `BRAF V600E; KRAS G12D; TP53 R175H`, separated by `;`. Each is handled like a line of a list file, so one that fails doesn't stop the others. A `;` inside square brackets, as in `c.[76A>C;83G>C]`, belongs to the change |
 
-Add `gene=BRAF` when a description has no gene.
+Add `gene=BRAF` when a description has no gene. `varshift examples` prints a working example of each form, and a test annotates every one of them.
 
 **Always put a variant in quotes.** A shell can read `>` as "write to a file", so type `varshift annotate "NM_004333.6:c.1799T>A"`. On Windows the installed `varshift.exe` keeps quoted text intact in both PowerShell and Command Prompt.
+
+## When the text is a little off
+
+Every description goes through two steps before it is annotated.
+
+**1. Slips with only one sensible reading are fixed,** and the result says so: `input.raw` keeps the text as typed, `input.read_as` holds the text VarShift read, and `input.read_as_notes` names each change. The card shows them on a `Read as` line. Text that already reads is never changed.
+
+| Typed | Read as | Rule |
+| - | - | - |
+| `braf val600glu`, `BRAF p.v600e`, `EGFR e746_a750del` | `BRAF Val600Glu`, `BRAF p.V600E`, `EGFR E746_A750del` | Amino acids in standard case, and the gene symbol as HGNC writes it |
+| `BRAF(V600E)` | `BRAF V600E` | Brackets straight after the gene |
+| `BRAF c.1799T-A`, `c.1799T->A`, `c.1799T/A` | `BRAF c.1799T>A` | Any arrow, dash or slash between the two bases of a substitution |
+| `NM_004333.6:1799T>A` | `NM_004333.6:c.1799T>A` | A transcript with no level takes `c.`, or `n.` for `NR_` and `XR_` |
+| `chr7:140453136A>T` | `chr7:g.140453136A>T` | A chromosome with no level takes `g.`, or `m.` for the mitochondrial genome |
+| `chr7:140,453,136 A>T` | `chr7:140453136 A>T` | Thousands separators |
+| Smart quotes, long dashes, a fullwidth `>`, odd spaces, a trailing `.` | Replaced or removed | Text pasted from a document or an email |
+| `HER2 V777L` | `ERBB2 V777L (HER2 is an alias)` | A gene alias, resolved through HGNC |
+
+**2. When a description still fails, VarShift offers what it probably meant,** built from the installed data. Nothing is applied without being chosen.
+
+| Typed | Offered |
+| - | - |
+| `BRAF V600` | The changes ClinVar and CIViC know at that residue, with their classification and evidence count |
+| `V600E` | The genes in which ClinVar or CIViC records that change. This search reads the whole ClinVar table, so files skip it |
+| `BRFA V600E` | Gene symbols one letter away, or two for longer symbols, a swapped pair counting as one. Ranked by how many ClinVar records each gene has |
+| `BRAF W600E` | The residue the protein really has: `BRAF V600E` |
+| `BRAF c.1799A>T` | The base the transcript really has: `c.1799T>A`, with REF and ALT swapped, or the REF corrected |
+| `chr7-140753336-A-T build=hg19` | The other build, when its REF matches there and it is installed. Otherwise a note that it may be on the other build |
+
+Where the options go depends on who can answer:
+
+- **One description at a terminal,** with `varshift annotate` or in the guided start: a numbered question. Your choice is annotated as if you had typed it, `input.raw` keeps what you typed, and `Read as` says it was chosen.
+- **A script, a pipe, `out=` or `format=`:** the error, then `Did you mean: ...`, and exit code 1. Nothing waits for an answer.
+- **A list file or a `;` list:** the line stays an error row, and its options go in the `suggestion` column. Only the quick suggestions run there, for the first 500 failing lines, and the summary says how many rows have one.
+- **A VCF:** never tidied or suggested. VCFs are written by machines, and a change there would hide a real problem.
+
+When there is nothing to suggest, the error is followed by `Not sure of the format? See: varshift examples`.
+
+### A typo that fits another transcript
+
+A description can fail on its gene's default transcript but fit another one, as `BRAF A600E` does: residue 600 is Val on NM_004333.6, the MANE Select transcript, but Ala on NM_001378475.1. That is more often a typo than a choice of isoform, so it isn't passed over in silence:
+
+- **At a terminal,** VarShift asks: `NM_004333.6, the default transcript, has Val at residue 600, not Ala, so NM_001378475.1 was used. Which did you mean?`, with `BRAF V600E` on the default transcript first, and the description as typed second.
+- **Everywhere else,** the answer stands, with the warning `default_transcript_differs`, a `Note` line on the card, `input.default_transcript` in JSON, and the corrected description in the `suggestion` column.
+
+The same holds for a c. name whose base fits another transcript only, such as `BRAF c.1799C>G`. Naming the transcript, as in `NM_001378475.1:c.1799_1800delinsAG`, says which you meant, and nothing is asked.
 
 ## What happens with p. input
 
 - **Substitutions:** every codon giving that amino acid is tried, so `BRAF V600E` gives `c.1799T>A` and `c.1799_1800delinsAA`.
 - **In-frame deletions and duplications:** the codons named are removed or repeated.
 - **Frameshifts, insertions, extensions:** a protein name doesn't define one DNA change, so VarShift looks up ClinVar's names for that gene. If ClinVar has none, it says so and asks for the c. name.
-- **Wrong residue on the default transcript:** other transcripts of the gene are tried, and a match carries `other_transcript_used`.
+- **Wrong residue on the default transcript:** other transcripts of the gene are tried, and a match carries `other_transcript_used`. That is usually a typo, so VarShift says what the default transcript has there: see [a typo that fits another transcript](#a-typo-that-fits-another-transcript).
+
+## One answer
+
+The candidates for one description are sorted into one kind of answer, recorded in `input.answer`:
+
+| Kind | When | Shown as |
+| - | - | - |
+| `single` | One candidate | Its card |
+| `clear` | Several, and exactly one is in ClinVar. Or none is, and exactly one changes the fewest bases | The best candidate's card, with `Why this` and `Also` lines |
+| `choice` | An rs number with several alleles, several candidates in ClinVar, or a tie on bases changed | A numbered table. At a terminal you choose one, `a` for all, or Enter for the first. Otherwise the table and how to see every candidate |
+
+The best candidate comes first, with `candidate.best` true and `candidate.why` naming the rule that chose it, plus `MANE Select transcript` when its transcript is. `also` names up to three of the others. Each allele of an rs number is a different variant, so nothing is preferred among them. `show=all` prints every candidate in full, as before.
 
 ## Transcripts shown
 
@@ -33,8 +92,11 @@ Up to five transcripts per gene are computed by default, because some genes have
 
 | Field | Meaning |
 | - | - |
-| `input` | The text given, its type and the build used |
-| `candidate` | Rank among candidates, how many there are, how it was found, and whether ClinVar has it |
+| `input` | `raw` is the text as given, `type` its kind, and `build` the build used. `read_as` is the text read after a slip was fixed, or empty, and `read_as_notes` names each change. `answer` is `single`, `clear` or `choice`. `mode` is `tumour`, `inherited` or null |
+| `candidate` | `rank` among candidates and `of` how many there are, `via` how it was found, `in_clinvar`, `bases_changed`, `best` (true on the answer shown), and `why` (the rules that chose it) |
+| `also` | On the best candidate of a `clear` answer: the others, as in `c.1799_1800delinsAA (2 bases, not in ClinVar)` |
+| `suggestions` | On a list or `;` row that failed: what it probably meant, each a description you can type. Also on a result that fitted only a transcript other than the default: the description written to fit the default |
+| `input.default_transcript` | Only then: the default transcript's `accession`, what it `says` it has there, and the `suggestion` |
 | `variant.hg19`, `variant.hg38` | `key` is the normalised, left-aligned position in the form `chr7-140453136-A-T`. `ref_check` is `pass`, `fail` or `not_run`. `hgvs_g` is the genomic name |
 | `gene` | Symbol, name, HGNC ID, NCBI Gene ID, Ensembl gene, OMIM |
 | `transcript` | The default transcript. `genome_note` appears when RefSeq says the transcript differs from the genome |
@@ -60,11 +122,18 @@ A result whose `evidence.clinvar.status` is `not_found` means only that this var
 
 | You give | You get |
 | - | - |
-| One variant | A readable card on the screen. Add `format=json`, `format=jsonl` or `format=tsv` for programs, or `out=name.xlsx` for a file |
+| One variant | Its answer on the screen: the best candidate's card, or a choice ([One answer](#one-answer)). `show=all` prints every candidate in full and `links=all` every link with its label and note. Add `format=json`, `format=jsonl` or `format=tsv` for programs, or `out=name.xlsx` for a file |
+| Several, separated by `;` | One numbered line each on the screen, or all of them in the file `out=` names |
 | A list or a VCF | A folder named after the input, holding `report.html`, `results.xlsx` and `results.tsv`. Name it with `out=FOLDER` |
 | A list or a VCF with `out=name.xlsx` | Just that one file. The extension chooses the format: `.xlsx`, `.html`, `.tsv`, `.json` or `.jsonl` |
 
 Existing output is never replaced unless you add the word `replace`.
+
+### The card on the screen
+
+`mode=tumour` puts CIViC first, then ClinVar's oncogenicity and somatic impact, and links to ClinVar, OncoKB, CIViC, COSMIC and cBioPortal. `mode=inherited` puts the ClinVar classification and review status first, then ClinGen gene validity and gnomAD constraint, and links to ClinVar, gnomAD, ClinGen, OMIM and Franklin. With no mode, the links are ClinVar, gnomAD, UCSC Genome Browser, dbSNP and VarSome. `varshift config mode=tumour` saves a mode, and `mode=none` clears it. The mode is recorded in `input.mode` and the `mode` column.
+
+Warnings are written as sentences on `Note` lines, while the codes stay in JSON and TSV. Lines wrap at the terminal's width. Colour is used only in a terminal, and never when `NO_COLOR` is set or `color=no` is given or saved.
 
 ### The Excel workbook
 
@@ -73,6 +142,7 @@ Existing output is never replaced unless you add the word `replace`.
 | Summary | Input, date, counts by priority, effect and gene, and any update notice |
 | Priority | High, Medium and Review results, sorted, with reasons and the main links. Start here |
 | All results | Every result and every column, with filters |
+| Links | One row per result and database: the result number, input, gene, c. and p. names, the database, a clickable link, its label (confirmed ID or built), and its note. A database with no link for that result says why |
 | Warnings explained | Each warning found, how often, what it means and what to do |
 | Data versions | The version of every database used |
 
@@ -87,6 +157,20 @@ Opening a link in it sends that variant to that website. Nothing else in the rep
 One row per candidate, on the default transcript. For a VCF, the original columns come first, split per ALT allele, followed by `ALT_ORIGINAL`.
 
 `priority`, `priority_reasons`, `input`, `input_type`, `build`, `candidate_rank`, `candidates_total`, `hg19_key`, `hg38_key`, `gene`, `transcript`, `mane`, `hgvs_g`, `hgvs_c`, `hgvs_p`, `protein_short`, `exon`, `intron`, `effect`, `clinvar_id`, `clinvar_classification`, `clinvar_review_status`, `clinvar_condition`, `clinvar_oncogenicity`, `clinvar_somatic_impact`, `rsid`, `uniprot`, `pfam_at_residue`, `pfam_gene`, `civic_variant`, `civic_evidence_items`, `clingen_validity`, `clingen_dosage`, `gnomad_pli`, `gnomad_loeuf`, then the columns of any advanced database you installed, then `flags`, `error`, one `link_` column per database, and `data_versions`.
+
+The last seven columns come after `data_versions`, so scripts that read columns by position keep working:
+
+| Column | Holds |
+| - | - |
+| `read_as` | The text VarShift read, when it fixed a slip. Empty otherwise |
+| `answer` | `single`, `clear` or `choice` |
+| `best` | `yes` on the row shown as the answer, `no` on the others |
+| `why` | Why that row is the answer, on the best row |
+| `also` | The other candidates, on the best row of a `clear` answer |
+| `suggestion` | On a row that failed: what it probably meant, separated by `; `. On a row that fitted only a transcript other than the default: the description written to fit the default |
+| `mode` | `tumour`, `inherited` or empty |
+
+Excel can hold at most 1,048,576 rows and 65,000 clickable links per sheet. Past those limits the Summary sheet says what was left out, and `results.tsv` has everything.
 
 ### Columns added by advanced databases
 
@@ -134,6 +218,7 @@ For a VCF over 1 MB, VarShift uses up to 4 processes, each with its own read-onl
 | - | - | - |
 | `multiple_candidates` | More than one DNA change fits this input | Look at all candidates; the first is only the best ranked |
 | `other_transcript_used` | The default transcript didn't fit, so another one was used | Check this is the isoform that was meant |
+| `default_transcript_differs` | The default transcript has a different residue or base here, so another transcript was used. This is often a typo | See `suggestion`: the change written to fit the default transcript. At a terminal, VarShift asks which you meant |
 | `transcript_version_substituted` | The version you named isn't installed, so another version of that transcript was used | Numbering can differ between versions, particularly in UTRs. Check the result |
 | `protein_version_substituted` | The same, for a protein accession | Check the result |
 | `transcript_differs_from_genome` | RefSeq says this transcript doesn't exactly match the genome here | Numbering follows RefSeq's alignment, but the genome's bases can differ from the transcript's. Check any change near the difference. See [validation](validation.md#what-the-mismatches-are) |

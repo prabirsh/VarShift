@@ -17,13 +17,13 @@ from .answer import Answer, choice_table, decide, error_line, render_answer, ren
 from .batch import annotate_lines, annotate_list, annotate_vcf, split_queries, vcf_columns
 from .builds import parse_build
 from .commandline import COMMANDS, Values, parse, render_help
-from .config import default_data_dir, forget_setting, is_windows_mount, load_settings, resolve_data_dir, save_setting
+from .config import data_dir_and_source, default_data_dir, forget_setting, is_windows_mount, load_settings, resolve_data_dir, save_setting
 from .errors import DataError, InputError, ReferenceMismatch, ResolveError, SetupError, VarShiftError
 from .examples import render_examples
 from .output import ReportContext, ReportFolder, ScreenSink, default_folder, format_of, open_file_sink, render_card
 from .session import Session
 from .store import DataStore
-from .suggest import apply_choice, option_texts, suggest
+from .suggest import Option, Question, apply_choice, option_texts, suggest, typo_note, typo_question
 from .term import SETTINGS, Terminal
 from .updates import check_in_background, clear_applied, notice_lines, read_status
 from .vcf import looks_like_vcf
@@ -172,6 +172,10 @@ def _annotate(values: Values) -> int:
             records = _suggest_instead(annotator, text, exc, values, mode, term, on_screen)
             if records is None:
                 return 1
+        if on_screen and term.interactive:
+            records = _ask_about_typo(annotator, text, records, values, mode, term)
+            if records is None:
+                return 1
         if on_screen:
             return _show_answer(records, values, mode, term)
         sink = _sink_for_single(values, context)
@@ -234,14 +238,37 @@ def _suggest_instead(annotator: Annotator, text: str, error: VarShiftError, valu
         else:
             print(question.text if question is not None else FORMAT_HINT, file=sys.stderr)
         return None
+    option = _choose_option(term, question)
+    if option is None:
+        return None
+    # Annotated once, as if it had been typed. If it fails too, that error is shown as it is.
+    return apply_choice(annotator.annotate_text(option.text, option.build or build, gene, mode), text, option)
+
+
+def _ask_about_typo(annotator: Annotator, text: str, records: list[dict], values: Values, mode, term: Terminal):
+    """It fitted only a transcript other than the default, which is often a typo: ask which was meant.
+
+    Returns the records to show, or None when the question was cancelled.
+    """
+    question = typo_question(records)
+    if question is None:
+        return records
+    option = _choose_option(term, question)
+    if option is None:
+        return None
+    if option.keep:
+        return records
+    return apply_choice(annotator.annotate_text(option.text, values.get("build"), values.get("gene") or "", mode), text, option)
+
+
+def _choose_option(term: Terminal, question: Question) -> Option | None:
+    """A numbered question at the terminal. The chosen option, or None, with a message, when cancelled."""
     width = max(len(option.label) for option in question.options)
     picked = term.choose(term.style(question.text, "strong"), [f"{o.label:<{width}}  {o.detail}" for o in question.options])
     if picked is None:
         print("Nothing annotated.", file=sys.stderr)
         return None
-    option = question.options[picked[0]]
-    # Annotated once, as if it had been typed. If it fails too, that error is shown as it is.
-    return apply_choice(annotator.annotate_text(option.text, option.build or build, gene, mode), text, option)
+    return question.options[picked[0]]
 
 
 def _show_answer(records: list[dict], values: Values, mode: str | None, term: Terminal) -> int:
@@ -258,6 +285,8 @@ def _show_answer(records: list[dict], values: Values, mode: str | None, term: Te
     if not term.interactive:
         term.write(render_choices(answer, term))
         term.write("Each is a different variant. To see all in full: show=all\n")
+        if typo_note(records):
+            term.write(typo_note(records) + "\n")
         return 0
     heading, rows = choice_table(answer, term)
     if len(rows) < len(answer.records):
@@ -280,14 +309,16 @@ def _show_queries(annotator: Annotator, queries: list[str], values: Values, mode
     example = None
     for number, text in enumerate(queries, 1):
         try:
-            answer = decide(annotator.annotate_text(text, build, gene, mode))
+            records = annotator.annotate_text(text, build, gene, mode)
         except VarShiftError as exc:
             texts = option_texts(suggest(annotator.store, text, exc, build, fast_only=True, gene=gene))
             message = f"did you mean {texts[0]}? ({exc})" if texts else str(exc)
             term.write(error_line(number, text, message, term, width) + "\n")
             continue
         example = example or text
-        term.write(summary_line(number, answer, term, width) + "\n")
+        term.write(summary_line(number, decide(records), term, width) + "\n")
+        if typo_note(records):
+            term.write(f"     {typo_note(records)}\n")
     words = "".join(f" {name}={values.get(name)}" for name in ("build", "gene", "mode") if values.get(name))
     term.write(f'To see one in full: varshift annotate "{example or queries[0]}"{words}\n')
     term.write("To save them all, with every link: add out=results.xlsx\n")
@@ -700,10 +731,12 @@ def _config(values: Values) -> int:
     mode_word = _mode_named(mode) if mode is not None else None
     if color is not None and color.lower() not in SETTINGS:
         raise InputError(f"color must be auto, yes or no, not {color!r}")
+    data = resolve_data_dir(values.get("data")) if values.get("data") else None
+    data_dir_and_source()  # a VARSHIFT_DATA that can't be used is reported here, before anything is saved
     if updates is not None:
         save_setting("updates", updates)
-    if values.get("data"):
-        save_setting("data_dir", str(resolve_data_dir(values.get("data"))))
+    if data is not None:
+        save_setting("data_dir", str(data))
     if mode is not None:
         if mode_word is None:
             forget_setting("mode")
@@ -712,11 +745,20 @@ def _config(values: Values) -> int:
     if color is not None:
         save_setting("color", color.lower())
     settings = load_settings()
-    print(f"Data folder            {settings.get('data_dir', default_data_dir())}")
+    _print_data_folder(settings.get("data_dir"))
     print(f"Quick update check     {settings.get('updates', 'on')}")
     print(f"Mode                   {settings.get('mode') or 'none'}")
     print(f"Colour                 {settings.get('color') or 'auto'}")
     return 0
+
+
+def _print_data_folder(saved: str | None) -> None:
+    """The folder commands really use: VARSHIFT_DATA, when set, wins over the saved setting."""
+    folder, source = data_dir_and_source()
+    note = {"VARSHIFT_DATA": "  (from VARSHIFT_DATA)", "default": "  (the default; none saved)"}.get(source, "")
+    print(f"Data folder            {folder}{note}")
+    if source == "VARSHIFT_DATA" and saved and Path(saved).expanduser().resolve() != folder:
+        print(f"Saved data folder      {saved}  (not used while VARSHIFT_DATA is set)")
 
 
 HANDLERS = {

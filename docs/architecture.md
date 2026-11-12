@@ -7,6 +7,8 @@ VarShift is a small Python package with no runtime dependencies. Each module has
 | Module | Job |
 | - | - |
 | `inputs.py` | Decide what kind of description a piece of text is |
+| `tidy.py` | Fix slips that have only one sensible reading, such as `braf val600glu`, and say what changed |
+| `suggest.py` | When a description fails, offer what it probably meant, from the installed data |
 | `hgvs.py` | Parse c., g. and p. change descriptions |
 | `builds.py` | Contig names, lengths and accessions for hg19 and hg38; work out a VCF's build |
 | `genome.py` | Read reference bases through a memory map |
@@ -19,12 +21,16 @@ VarShift is a small Python package with no runtime dependencies. Each module has
 | `bigwig.py` | Read single values from a bigWig file, for phyloP |
 | `annotate.py` | Run the steps for one variant and assemble the result |
 | `priority.py` | Sort results for review, with reasons |
+| `answer.py` | Sort one description's candidates into one answer (single, clear or choice), and lay out the card, the choice table and the summary line |
 | `advanced.py` | What each advanced database is, how to get it, and which columns it adds |
 | `links.py`, `data/links.json` | Build labelled reference links from templates |
 | `vcf.py`, `batch.py` | Stream a VCF or a list, on several processes for a large file |
 | `output.py`, `xlsx.py`, `report.py`, `data/report_template.html` | Write the screen card, Excel, the HTML report, TSV and JSON |
 | `flags.py` | Each warning in plain words, with what to do |
 | `commandline.py`, `cli.py` | Read the command line, and run each command |
+| `term.py` | What kind of terminal this is: colour, width, and whether a person is there to answer. Nothing waits for an answer otherwise |
+| `session.py` | The guided start: queries, choices, and saving the answers seen |
+| `examples.py` | Every accepted way to write a variant, each with an example that a test annotates |
 | `config.py` | Saved settings, and where the data folder is |
 | `updates.py` | The quick notice when a newer database exists. **The only module that starts a process of its own for this check**, and it takes no input about variants |
 | `explain.py` | Print each step, file and query for one variant |

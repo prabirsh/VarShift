@@ -40,7 +40,7 @@ The brief asked for Excel plus something smarter. These were the options:
 
 | Option | Good | Bad | Decision |
 | - | - | - | - |
-| Excel workbook | Everyone can open it, filter it and send it | Awkward for browsing one variant in detail | **Always produced.** Sheets: Summary, Priority, All results, Warnings explained, Data versions |
+| Excel workbook | Everyone can open it, filter it and send it | Awkward for browsing one variant in detail | **Always produced.** Sheets: Summary, Priority, All results, Links, Warnings explained, Data versions. The Links sheet gives every result's links as clickable rows, so a workbook can be checked or fed into another system without the report |
 | A single HTML file | Interactive. Opens with a double click, works offline, can be emailed or kept with a case | Very large VCFs need a row limit | **Always produced.** Up to 20,000 rows. When there are more, Low results leave first and the page says so |
 | TSV | Easy to use from scripts, R or pandas | Not much to look at | **Always produced** |
 | A local web server, as OpenCRAVAT does | Handles any size, with rich queries | Something has to keep running, ports and firewalls get in the way, and the result can't be emailed | Not chosen |
@@ -48,6 +48,16 @@ The brief asked for Excel plus something smarter. These were the options:
 | Web app in the cloud | Nothing to install | Patient data would leave the computer | Ruled out |
 
 Single variants print a readable card in the terminal, because a report folder for one variant would just get in the way. JSON and JSON Lines are available for programs.
+
+### In the terminal
+
+A first look at the command line, in November 2026, found three problems: a typing slip ended the run with an error, `BRAF V600E` printed 64 lines with two equally weighted cards, and `varshift` on its own gave no way to start. So:
+
+- **One answer, and why.** The candidates for a description are sorted into one answer. The best one comes first when it is the only one in ClinVar, or, with none in ClinVar, the only one that changes the fewest bases, and a `Why this` line says which. The others are named on an `Also` line. When nothing decides between them, as for an rs number with several alleles, a numbered table asks. The BRAF V600E card fits in 20 lines at 100 columns.
+- **Five links, not twenty.** The card shows the five most useful links for the work at hand, `mode=tumour` or `mode=inherited` choosing which, and `links=all` shows every one.
+- **Slips are read, guesses are asked.** A slip with only one reading, such as `braf val600glu`, is fixed and shown on a `Read as` line. A guess becomes a numbered question built from the installed data, such as the changes ClinVar knows at a residue, or gene symbols one letter away. Scripts get `Did you mean:` and are never kept waiting.
+- **Warnings in words.** Each warning is written as a sentence, and colour marks the priority only in a terminal.
+- **A guided start.** `varshift` alone opens a session: type variants, see answers, and save the ones you saw to a workbook with every link.
 
 ### What the interactive report has
 

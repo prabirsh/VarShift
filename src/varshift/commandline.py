@@ -24,7 +24,7 @@ class Command:
     examples: tuple[str, ...] = ()
 
 
-DATA_OPTION = {"data": "data folder (default: the folder chosen at setup, or ~/varshift-data)"}
+DATA_OPTION = {"data": "data folder (default: VARSHIFT_DATA if set, else the folder chosen at setup, else ~/varshift-data)"}
 WINDOWS_DRIVE_FLAG = {"windowsdrive": "from WSL, allow a data folder on a Windows drive, though building there is slow and can run out of memory"}
 
 COMMANDS: dict[str, Command] = {

@@ -125,6 +125,11 @@ class NoPromptThroughAPipe(WithData):
         self.assertEqual(code, 0, err)
         self.assertIn("did you mean BRAF V600E", out)
 
+    def test_a_typo_on_the_default_transcript(self):
+        code, out, err = self._run("annotate", "BRAF A600E", f"data={self.data}", "build=hg19")
+        self.assertEqual(code, 0, err)
+        self.assertIn("If you meant the default transcript: BRAF V600E", out)
+
     def test_a_choice(self):
         code, out, err = self._run("annotate", "rs113488022", f"data={self.data}", "build=hg19")
         self.assertEqual(code, 0, err)

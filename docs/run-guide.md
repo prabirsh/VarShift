@@ -142,6 +142,8 @@ varshift config data=/mnt/i/VIP-Annotations
 
 Each `varshift` command then takes about 2 seconds in WSL. See [the measurements](benchmarks.md#data-on-a-windows-drive-used-from-wsl). `varshift update check` works from WSL, as it changes nothing. WSL refuses the Windows spelling `I:\VIP-Annotations`, because bash would remove the backslash.
 
+**Which data folder is used:** `data=` on the command, else the `VARSHIFT_DATA` variable if it is set, else the folder saved by setup or `varshift config data=PATH`, else `~/varshift-data`. `varshift config` shows the folder in use, and says when `VARSHIFT_DATA` or the default chose it. If `VARSHIFT_DATA` is set, a saved folder is ignored, and `varshift config` says that too.
+
 **Time:** about 45 minutes for one build on a 2-core laptop with a 2 MB/s connection, and an estimated 1.5 hours for both. See [the time for each step](benchmarks.md#setup-time). Plug the laptop in and keep it awake.
 
 **While it runs,** it always says what it is doing. Every long download prints how far it has got, its speed and the time left, and every long build says once a minute that it is still going. So more than a few minutes of silence means something is wrong.
@@ -161,15 +163,72 @@ At the end it runs the known-variant self-test. You want all of them to pass: `5
 
 **If a known variant fails or setup stops with an error,** please keep the message and report it. Few complete runs have been done so far, so a problem here is useful to know about.
 
-## 3. Annotate
+## 3. The guided start
+
+Type `varshift` on its own in a terminal, or `varshift start`:
+
+```text
+VarShift: offline variant annotation. Data: hg19, ClinVar 2026-11-01
+
+What do you have? Type one or more, separated by ;  (or paste several lines)
+  1  Protein change     BRAF V600E
+  2  cDNA change        NM_004333.6:c.1799T>A
+  3  Genomic position   chr7:g.140453136A>T   or   chr7-140453136-A-T
+  4  rs number          rs113488022
+  5  A file             variants.txt   or   sample.vcf.gz
+Type a number for examples of that kind, help for what else you can type, or Enter to quit.
+
+>
+```
+
+Type a variant the way you have it. One gets its full answer, and several get a numbered line each. A slip is asked about, and when nothing decides between candidates you choose ([how](input-output.md#when-the-text-is-a-little-off)). The data stays open, so each answer after the first is immediate. Nothing about your queries is written to disk unless you save.
+
+| Type | To |
+| - | - |
+| `save` | Save the answers to Excel: `varshift-session-DATE-TIME.xlsx`, in the current folder |
+| `save NAME.xlsx` | Save to that file. `.html`, `.tsv`, `.json` and `.jsonl` write those formats |
+| `save FOLDER/` | Write `report.html`, `results.xlsx` and `results.tsv` in that folder |
+| `list` | See the answers so far, numbered |
+| A number | See that answer in full again |
+| `all N` | See every candidate of answer N in full, not only the best |
+| `remove N`, `clear` | Drop one answer, or all of them |
+| `mode tumour`, `mode inherited`, `mode off` | Change which evidence and links come first, for the queries after it |
+| `examples`, `help` | How to write a variant, and this list |
+| A file name | Annotate that file into its own results folder, as `varshift annotate` would |
+| Enter, or `quit` | Quit. If any answer isn't saved, it asks first |
+
+**What is saved:** the answers you saw, with every link in the workbook's Links sheet. For each one that's the best candidate, with the others named in `also`, or the candidates you chose. A second `save` in the same minute adds `-2`, so it never overwrites. Saving to a file that exists asks before replacing it.
+
+**No data yet?** It offers the 12-gene demo data at once, with no download, or setup. The demo is built in a temporary folder in the current directory and removed when you quit, and anything saved from it says it was made with the demo data.
+
+Ctrl+C during a query stops only that query. At the prompt it stops the session and says how many answers weren't saved. To set the build for positions and the mode from the start:
+
+```bash
+varshift start build=hg19 mode=tumour
+```
+
+Piped or scheduled, `varshift` alone prints the command list, and `varshift start` says it needs a terminal. Neither ever waits for an answer.
+
+## 4. Annotate
 
 ```bash
 varshift annotate "BRAF V600E" build=hg19
 varshift annotate "NM_004333.6:c.1799T>A" build=hg38
 varshift annotate "chr7:g.140453136A>T" build=hg19
+varshift annotate "BRAF V600E; KRAS G12D; TP53 R175H" build=hg19
 varshift annotate variants.txt build=hg19
 varshift annotate sample.vcf.gz
 ```
+
+One variant gets one answer: the best candidate's card, with why it was chosen and the others named, or a choice when nothing decides between them. These change what the card shows:
+
+```bash
+varshift annotate "BRAF V600E" build=hg19 show=all
+varshift annotate "KRAS G12D" build=hg19 mode=tumour links=all
+varshift annotate "BRAF V600E" build=hg19 color=no
+```
+
+`show=all` prints every candidate in full, and `links=all` every link with its label and note. `mode=tumour` puts CIViC, OncoKB and cBioPortal first, and `mode=inherited` puts ClinGen, gnomAD constraint and OMIM first. `varshift config mode=tumour` saves a mode, and `varshift config color=no` saves the colour choice. Several variants separated by `;` get one numbered line each, or all go in the file that `out=` names. `varshift examples` shows every way to write a variant.
 
 A VCF's build is read from its header. Results go in a folder named after the input, `sample_varshift/`, in the current directory, holding `report.html`, `results.xlsx` and `results.tsv`. To put them somewhere else, add `out=FOLDER`, or `out=FILE.xlsx` for one file.
 
@@ -187,7 +246,7 @@ varshift annotate "I:\runs\SAMPLE.hard-filtered.vcf.gz" "out=C:\Users\you\result
 
 Keep results with patient data on a private disk: see [SECURITY.md](../SECURITY.md).
 
-## 4. See how it decided
+## 5. See how it decided
 
 ```bash
 varshift explain "BRAF V600E" build=hg19
@@ -195,7 +254,7 @@ varshift explain "BRAF V600E" build=hg19
 
 This prints every step, file and query. [How lookups work](how-lookups-work.md) explains the output.
 
-## 5. Add advanced databases
+## 6. Add advanced databases
 
 ```bash
 varshift databases
@@ -208,7 +267,7 @@ varshift remove dbsnp
 
 `varshift databases` lists each one with its size, its licence, what is installed, and how to get it. The next report gains columns only for what you added. See [data sources](data-sources.md#advanced-databases).
 
-## 6. Stay up to date
+## 7. Stay up to date
 
 A notice appears by itself when a newer version of a database exists, and it doesn't slow the run. When you see it:
 
@@ -220,7 +279,7 @@ varshift rollback
 
 To automate it, see [updates.md](updates.md).
 
-## 7. Measure accuracy on your own data
+## 8. Measure accuracy on your own data
 
 These two give you the proof for your own installation:
 
@@ -240,7 +299,7 @@ python3 tools/compare_annotated_vcf.py SAMPLE.annotated.vcf.gz differences=diffe
 
 It stays on your computer, but treat its output as private.
 
-## 8. Send your changes to GitHub
+## 9. Send your changes to GitHub
 
 The repository is at [github.com/prabirsh/VarShift](https://github.com/prabirsh/VarShift). To publish changes, from Ubuntu or WSL:
 
@@ -266,6 +325,11 @@ On GitHub, go to **Settings**, then **Code security**, and turn on **Private vul
 | `no VarShift data in ...` | Run `varshift setup`, or add `data=FOLDER` |
 | `not enough disk space` | Free up space, or choose another folder with `data=`. In WSL a folder under `/mnt/` works but is slower |
 | `another setup or update is running` | Wait for it. If nothing is running, run the command again: a leftover lock from a stopped run clears itself |
+| `Did you mean: ...` | VarShift couldn't read the description as written, and these are what it probably meant. Run the one you meant. At a terminal, with no `out=` or `format=`, it would have asked |
+| `Not sure of the format?` | Nothing near it could be found. `varshift examples` shows every form that works |
+| `varshift start needs a terminal` | It was run from a script, a pipe or a scheduled task. Use `varshift annotate` there |
+| Odd characters such as `←[1;31m` around words | That console doesn't understand colour. Add `color=no`, or keep it with `varshift config color=no` |
+| `the mitochondrial rCRS sequence (NC_012920.1) comes with the hg38 reference` | On hg19, mitochondrial names need hg38 set up too: `varshift setup build=hg38` |
 | `REF ... does not match` | Usually the wrong build. Check `build=` |
 | `build= says hg38, but the contig lengths ... are hg19` | Your VCF is on the other build |
 | Very slow lookups | In WSL, check that the data isn't under `/mnt/`. `varshift doctor` warns about it |

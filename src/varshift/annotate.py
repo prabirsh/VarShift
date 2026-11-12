@@ -13,6 +13,7 @@ from .priority import assign as assign_priority
 from .liftover import LiftResult, lift
 from .resolver import Candidate, Resolver
 from .store import DataStore
+from .suggest import default_transcript_typo
 from .tidy import Reading, replace_word, tidy
 from .variant import Variant
 
@@ -61,6 +62,7 @@ class Annotator:
         parsed = parse_input(reading.text, gene=gene)
         chosen = self._pick_build(parsed, build)
         candidates = self.resolver.resolve(parsed, chosen)
+        passed_over = self.resolver.passed_over
         read_as, notes = self._read_as(reading)
         input_info = {
             "raw": text.strip(),
@@ -89,6 +91,13 @@ class Annotator:
             if len(candidates) > 1 and "multiple_candidates" not in record["flags"]:
                 record["flags"].append("multiple_candidates")
             results.append(record)
+        # It didn't fit the gene's default transcript, only another one: often a typo, so say what the default has.
+        typo = default_transcript_typo(self.store, reading.text, passed_over, chosen, gene) if passed_over else None
+        if typo:
+            input_info["default_transcript"] = typo
+            for record in results:
+                record["flags"].append("default_transcript_differs")
+                record["suggestions"] = [typo["suggestion"]]
         # The best candidate, if one stands out, comes first and says why.
         return apply_answer(decide(results))
 

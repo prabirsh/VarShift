@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from .advanced import flatten_advanced
 from .flags import FLAG_HELP
 from .output import LINK_LABELS, _clinvar_status
+from .suggest import typo_note
 
 ALSO_SHOWN = 3
 LINKS_SHOWN = 5
@@ -137,9 +138,13 @@ def render_answer(answer: Answer, term, mode: str | None = None, links_all: bool
         lines += _field(term, "Why this", _DOT.join(answer.why))
         lines += _field(term, "Also", _also_line(answer, record, also_hint))
     lines += _link_lines(term, record.get("links") or [], mode, links_all)
-    for flag in record.get("flags") or []:
-        if flag not in _NOT_NOTED:
-            lines += _field(term, "Note", _note(flag))
+    flags = record.get("flags") or []
+    for flag in flags:
+        # The typo note says which transcript was used, and why, so the general one would only repeat it.
+        if flag in _NOT_NOTED or (flag == "other_transcript_used" and "default_transcript_differs" in flags):
+            continue
+        typo = typo_note([record]) if flag == "default_transcript_differs" else None
+        lines += _field(term, "Note", typo or _note(flag))
     return "\n".join(lines) + "\n"
 
 

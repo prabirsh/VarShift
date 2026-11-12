@@ -42,6 +42,7 @@ class Option:
     label: str  # short, for the numbered list
     detail: str  # the evidence shown beside it
     build: str | None = None  # set when the option is the same text on another build
+    keep: bool = False  # set when the option is to keep the answer already found
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,52 @@ def apply_choice(records: list[dict], typed: str, option: Option) -> list[dict]:
     source["read_as_notes"] = list(source.get("read_as_notes") or []) + chosen
     source["raw"] = typed.strip()
     return records
+
+
+def default_transcript_typo(store, text: str, mismatch: ReferenceMismatch, build: str, gene: str = "") -> dict | None:
+    """When a description fitted only a transcript other than its gene's default, what it says on the default.
+
+    Returns what the default transcript has there and the description corrected to fit it, or None
+    when no correction can be made. The description is kept: the person decides.
+    """
+    error = ResolveError("", causes=[mismatch])
+    for rule in (_wrong_residue, _wrong_base):
+        try:
+            question = rule(store, text, error, build, True, gene)
+        except (VarShiftError, ValueError):
+            continue
+        if question is None or not question.options:
+            continue
+        if isinstance(mismatch.position, int):
+            says = f"{mismatch.transcript}, the default transcript, has {AA3[mismatch.found]} at residue {mismatch.position}, not {AA3[mismatch.expected]}"
+        else:
+            level = parse_input(text, gene=gene).level
+            says = f"{mismatch.transcript}, the default transcript, has {mismatch.found} at {level}.{mismatch.position}, not {mismatch.expected}"
+        return {"accession": mismatch.transcript, "says": says, "suggestion": question.options[0].text}
+    return None
+
+
+def typo_question(records: list[dict]) -> Question | None:
+    """For results found on a transcript other than the default: ask whether the default was meant."""
+    default = (records[0].get("input") or {}).get("default_transcript") if records else None
+    if not default:
+        return None
+    raw = records[0]["input"]["raw"]
+    used = (records[0].get("transcript") or {}).get("accession") or "another transcript"
+    options = (
+        Option(default["suggestion"], default["suggestion"], f"on {default['accession']}, the default transcript"),
+        Option(raw, raw, f"as typed, on {used}", keep=True),
+    )
+    return Question(f"{default['says']}, so {used} was used. Which did you mean?", options)
+
+
+def typo_note(records: list[dict]) -> str | None:
+    """The same, as one sentence for a script, a file or a summary line."""
+    default = (records[0].get("input") or {}).get("default_transcript") if records else None
+    if not default:
+        return None
+    used = (records[0].get("transcript") or {}).get("accession") or "another transcript"
+    return f"{default['says']}, so {used} was used. If you meant the default transcript: {default['suggestion']}"
 
 
 def option_texts(question: Question | None) -> list[str]:

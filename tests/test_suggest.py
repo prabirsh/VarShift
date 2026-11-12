@@ -7,7 +7,7 @@ from unittest import mock
 from tests.test_integration import WithData
 from varshift.errors import ReferenceMismatch, ResolveError, VarShiftError
 from varshift.store import DataStore
-from varshift.suggest import Question, close_symbols, edits, suggest
+from varshift.suggest import Question, close_symbols, edits, suggest, typo_question
 
 
 class Suggestions(WithData):
@@ -173,3 +173,52 @@ class Spelling(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TypoOnTheDefaultTranscript(WithData):
+    """A change that fails on the default transcript but fits another is often a typo, so it says so."""
+
+    def test_a_residue_typo_that_fits_another_transcript_is_noted(self):
+        records = self.annotator.annotate_text("BRAF A600E", "hg19")
+        source = records[0]["input"]
+        default = source["default_transcript"]
+        self.assertTrue(default["accession"].startswith("NM_004333"))
+        self.assertIn("has Val at residue 600, not Ala", default["says"])
+        self.assertEqual(default["suggestion"], "BRAF V600E")
+        for record in records:
+            self.assertIn("default_transcript_differs", record["flags"])
+            self.assertEqual(record["suggestions"], ["BRAF V600E"])
+            self.assertNotEqual(record["transcript"]["accession"], default["accession"])
+
+    def test_a_base_typo_that_fits_another_transcript_is_noted(self):
+        source = self.annotator.annotate_text("BRAF c.1799C>G", "hg19")[0]["input"]
+        self.assertIn("has T at c.1799, not C", source["default_transcript"]["says"])
+        self.assertEqual(source["default_transcript"]["suggestion"], "BRAF c.1799T>G")
+
+    def test_nothing_is_noted_when_the_default_fits_or_a_transcript_is_named(self):
+        # The c. name of what BRAF A600E found, with its transcript named: that transcript was meant.
+        named_c = self.annotator.annotate_text("BRAF A600E", "hg19")[0]["hgvs"]["c"]
+        for text in ("BRAF V600E", "NM_004333.6:c.1799T>A", "KRAS G12D", named_c):
+            with self.subTest(text=text):
+                record = self.annotator.annotate_text(text, "hg19")[0]
+                self.assertNotIn("default_transcript", record["input"])
+                self.assertNotIn("default_transcript_differs", record["flags"])
+
+    def test_the_question_offers_the_default_transcript_first_and_keeping_it(self):
+        records = self.annotator.annotate_text("BRAF A600E", "hg19")
+        question = typo_question(records)
+        self.assertIn("has Val at residue 600, not Ala", question.text)
+        self.assertEqual([o.text for o in question.options], ["BRAF V600E", "BRAF A600E"])
+        self.assertEqual([o.keep for o in question.options], [False, True])
+        self.assertIsNone(typo_question(self.annotator.annotate_text("BRAF V600E", "hg19")))
+
+    def test_the_card_says_it_in_words(self):
+        from varshift.answer import decide, render_answer
+        from varshift.flags import FLAG_HELP
+        from varshift.term import QuietTerminal
+
+        # On the demo data A600E fits two DNA changes, a choice, so one candidate's card is drawn.
+        text = render_answer(decide(self.annotator.annotate_text("BRAF A600E", "hg19")[:1]), QuietTerminal())
+        self.assertIn("If you meant the default transcript: BRAF V600E", text)
+        self.assertNotIn(FLAG_HELP["other_transcript_used"][0], text)
+        self.assertNotIn("default_transcript_differs", text)

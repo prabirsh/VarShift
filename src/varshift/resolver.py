@@ -37,9 +37,13 @@ class Resolver:
         self.store = store
         # The gene of the last description, as given and as HGNC approves it, so an alias can be shown.
         self.last_gene: tuple[str, str] | None = None
+        # When the last description didn't fit its gene's default transcript but fitted another, the base or
+        # residue the default has there. Usually that means a typo, so annotate can ask which was meant.
+        self.passed_over: ReferenceMismatch | None = None
 
     def resolve(self, parsed: ParsedInput, build: str) -> list[Candidate]:
         self.last_gene = None
+        self.passed_over = None
         if parsed.kind == "position":
             contig = canonical_contig(parsed.contig, build)
             return [Candidate(normalize(self.store.genome(build), contig, parsed.pos, parsed.ref, parsed.alt), via="genomic")]
@@ -90,6 +94,7 @@ class Resolver:
         transcripts, flags = self._transcripts_for(parsed, build)
         tried: list[str] = []
         causes: list = []
+        default_failure = None  # the mismatch on the first transcript the numbering applies to
         for number, tx in enumerate(transcripts):
             if parsed.level == "c" and not tx.coding:
                 tried.append(f"{tx.accession}: non-coding, so c. numbering does not apply")
@@ -97,15 +102,19 @@ class Resolver:
             if parsed.level == "n" and tx.coding:
                 tried.append(f"{tx.accession}: protein-coding, so n. numbering does not apply")
                 continue
+            first_applicable = not causes
             try:
                 variant = _apply_on_transcript(genome, tx, parsed.dna)
             except (ReferenceMismatch, ResolveError, InputError) as exc:
                 tried.append(f"{tx.accession}: {exc}")
                 causes.append(exc)
+                if first_applicable and isinstance(exc, ReferenceMismatch):
+                    default_failure = exc
                 continue
             candidate = Candidate(variant, tx, via="coding", bases_changed=_size(variant), flags=list(flags))
             if number and not parsed.transcript:
                 candidate.flags.append("other_transcript_used")
+                self.passed_over = default_failure
             return [candidate]
         raise ResolveError(f"no transcript fits {parsed.raw.strip()}", tried, causes)
 
@@ -176,6 +185,9 @@ class Resolver:
                 candidate.flags.extend(flags)
                 if number and not parsed.protein_accession:
                     candidate.flags.append("other_transcript_used")
+            # Every transcript before this one failed, so the first cause is the default transcript's.
+            if found and number and not parsed.protein_accession and isinstance(causes[0], ReferenceMismatch):
+                self.passed_over = causes[0]
             break
 
         known = {c.variant.key: c for c in found}

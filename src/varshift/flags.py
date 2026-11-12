@@ -3,6 +3,10 @@
 FLAG_HELP: dict[str, tuple[str, str]] = {
     "multiple_candidates": ("More than one DNA change fits this input.", "Look at all candidates; the first is only the best ranked."),
     "other_transcript_used": ("The default transcript didn't fit, so another one was used.", "Check this is the isoform that was meant."),
+    "default_transcript_differs": (
+        "The default transcript has a different residue or base here, so another transcript was used. This is often a typo.",
+        "See the suggestion column: it is the change written to fit the default transcript.",
+    ),
     "transcript_version_substituted": ("The transcript version you named isn't installed, so another version was used.", "Numbering can differ between versions, particularly in UTRs. Check the result."),
     "protein_version_substituted": ("The protein version you named isn't installed, so another version was used.", "Check the result."),
     "transcript_differs_from_genome": ("RefSeq says this transcript doesn't exactly match the genome here.", "Numbering follows RefSeq's alignment, but the genome's bases can differ from the transcript's. Check any change near the difference."),

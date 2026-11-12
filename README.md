@@ -17,6 +17,8 @@
 | - | - | - |
 | One variant, many websites | Each database has its own search and naming | One result with a labelled link per database |
 | The same variant, different names | Three major tools agreed on the c. name for only 58.52% of 164,549 ClinVar variants ([Human Genomics 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12181866/)) | Names measured against ClinVar's, ClinVar's own names alongside, and every candidate for a p. name |
+| One protein change, several DNA changes | `BRAF V600E` can come from two DNA changes. Tools list them with equal weight, or pick one without saying which or why | One answer, and why it was chosen: in ClinVar when the others aren't, or the fewest bases changed. The others are named on one line. When nothing decides between them, you choose |
+| A typing slip ends the run | `braf val600glu` or `BRAF c.1799T-A` stops most tools with an error | Slips with one sensible reading are read correctly, and the answer says how. A guess becomes a numbered question, or `Did you mean:` in a script |
 | Patient data leaving the building | A web search sends the variant to that site | Annotation has no network code, and a test enforces it |
 | hg19 and hg38 mixed up | A wrong-build VCF can look fine | The build is read from the VCF itself, a contradiction stops the run, and both positions are shown |
 | Thousands of rows and no starting point | A VCF doesn't say what to read first | Results sorted by priority, each with its reason. It sorts only, and is not a classification |
@@ -47,9 +49,30 @@ This installs the `varshift` command and runs the [demo](demo/README.md) with no
 varshift setup
 ```
 
+Then type `varshift` on its own. It opens the guided start: type variants the way a colleague wrote them, one or several, see each answer, and `save` them to Excel with every link. Here it is on the full hg19 data:
+
+```text
+> braf v600e; KRAS G12D; BRFA V600E
+BRFA isn't a gene symbol. Did you mean:
+  1  BRAF  ClinVar: 1,647 records
+  2  BRF1  ClinVar: 273 records
+  ...
+Choose 1 to 4, or Enter to cancel: 1
+  1  braf v600e  chr7-140453136-A-T      HIGH  ClinVar Conflicting · CIViC 94 items
+  2  KRAS G12D   chr12-25398284-C-T      HIGH  ClinVar Pathogenic/Likely pathogenic · CIViC 21 items
+  3  BRFA V600E  chr7-140453136-A-T      HIGH  ClinVar Conflicting · CIViC 94 items
+Type a number to see its full answer. 3 results in this session; save writes them to Excel.
+> save
+Saved 3 results to varshift-session-2026-11-09-1813.xlsx
+```
+
+Or one command at a time, as in a script. `varshift examples` shows every way to write a variant:
+
 ```bash
 varshift annotate "BRAF V600E" build=hg19
+varshift annotate "BRAF V600E; KRAS G12D; TP53 R175H" build=hg19 out=results.xlsx
 varshift annotate sample.vcf.gz
+varshift examples
 ```
 
 **In WSL with the data on a Windows drive** (`/mnt/c`, `/mnt/p` and so on), run `setup`, `update` and `add` from PowerShell, and annotate from either. WSL refuses to build on a Windows drive, because it is about 30 times slower and can run out of memory. [How to share one data folder](docs/run-guide.md#2-set-up-the-databases).
@@ -67,19 +90,42 @@ varshift annotate sample.vcf.gz
 | Genomic HGVS | `NC_000007.13:g.140453136A>T`, `chr7:g.140453136A>T` | Not with a RefSeq accession; otherwise `build=` |
 | Position | `chr7-140453136-A-T` | `build=` |
 | dbSNP number | `rs113488022` | Optional |
+| Several at once | `BRAF V600E; KRAS G12D; TP53 R175H` | As above |
 | A list | A text file with one of the above per line | As above |
 | A VCF | `.vcf`, `.vcf.gz` or `.vcf.bgz` | Read from the header |
 
 VarShift works with hg19 and hg38. hg18 is refused rather than guessed at.
 
+**Written a little differently?** Slips with only one sensible reading are fixed, and the answer shows how it read them, as in `Read as BRAF Val600Glu (amino acids written in standard case)`. That covers `braf val600glu`, `BRAF c.1799T-A`, `NM_004333.6:1799T>A`, `chr7:140,453,136 A>T`, a gene alias such as `HER2`, and text pasted from a document. Anything that needs a guess is asked about instead: `BRAF V600` lists the changes ClinVar and CIViC know at that residue, `BRFA V600E` the gene symbols it may be, and a wrong residue or base what the sequence really has. In a script, or with `out=`, you get `Did you mean:` and the run never waits. In a list file, the suggestions go in a `suggestion` column. VCF records are never changed.
+
 ## Output
 
-A single variant prints a card on the screen. A list or VCF gets a folder in the current directory, `sample_varshift/`, or wherever `out=` says, with three reports:
+A single variant prints one answer on the screen, short enough to read at a glance:
+
+```text
+BRAF V600E  ->  chr7-140453136-A-T (hg19)
+  HIGH        ClinVar oncogenicity: Oncogenic · ClinVar somatic impact: Tier I - Strong · CIViC: 94
+              evidence items · ClinVar: conflicting classifications
+  Gene        BRAF   NM_004333.6 (MANE Select)   exon 15
+  Names       c.1799T>A   p.Val600Glu   NC_000007.13:g.140453136A>T
+  ...
+  Why this    in ClinVar; the others aren't · MANE Select transcript
+  Also        1 other DNA change gives p.Val600Glu: c.1799_1800delinsAA (2 bases, not in ClinVar).
+              To see it: show=all
+  Check it    ClinVar              https://www.ncbi.nlm.nih.gov/clinvar/variation/13961/
+              gnomAD               https://gnomad.broadinstitute.org/variant/7-140453136-A-T?dataset=gnomad_r2_1
+              ...
+              15 more: links=all
+```
+
+When nothing decides between candidates, as for an rs number with several alleles, you get a numbered table and choose. `show=all` prints every candidate in full, and `links=all` every link. `mode=tumour` puts CIViC, OncoKB and cBioPortal first, and `mode=inherited` puts ClinGen, gnomAD constraint and OMIM first; `varshift config mode=tumour` keeps it. Warnings are written as sentences, and colour is used only in a terminal.
+
+A list or VCF gets a folder in the current directory, `sample_varshift/`, or wherever `out=` says, with three reports:
 
 | File | For |
 | - | - |
 | `report.html` | Exploring. One file that opens with a double click, works offline and can be emailed: search, filters, sorting, and a details panel for each result |
-| `results.xlsx` | Sharing. Sheets: Summary, Priority, All results, Warnings explained, Data versions |
+| `results.xlsx` | Sharing. Sheets: Summary, Priority, All results, Links, Warnings explained, Data versions. The Links sheet has one clickable row per result and database |
 | `results.tsv` | Your own scripts |
 
 ![The report: counts by priority, charts that filter, and a sortable table](docs/assets/report-overview.jpg)
@@ -188,7 +234,9 @@ Not covered: CNVs and structural variant calling, and effects on mitochondrial t
 
 | Command | What it does |
 | - | - |
-| `varshift annotate INPUT` | Annotate a description, a list file or a VCF |
+| `varshift`, `varshift start` | The guided start: type variants, see answers, save them |
+| `varshift annotate INPUT` | Annotate a description, several separated by `;`, a list file or a VCF |
+| `varshift examples` | Every way to write a variant, each with an example that works |
 | `varshift setup` | Choose builds, then download and build the data |
 | `varshift databases` | List every database, its size and licence |
 | `varshift add NAME`, `varshift remove NAME` | Add or remove an advanced database |
@@ -196,7 +244,7 @@ Not covered: CNVs and structural variant calling, and effects on mitochondrial t
 | `varshift status`, `varshift doctor` | What is installed, and a check of this computer |
 | `varshift explain INPUT` | Show each step, file and query |
 | `varshift selftest`, `varshift validate`, `varshift benchmark` | Known variants, accuracy, and speed |
-| `varshift demo`, `varshift config`, `varshift help` | Demo with no download, settings, and help |
+| `varshift demo`, `varshift config`, `varshift help` | Demo with no download, settings (data folder, mode, colour, the update check), and help |
 
 ## Security and privacy
 

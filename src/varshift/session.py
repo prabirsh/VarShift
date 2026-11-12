@@ -21,7 +21,7 @@ from .examples import MENU_KINDS, menu_lines, render_examples
 from .output import ReportContext, ReportFolder, default_folder, format_of, open_file_sink, render_card
 from .pipeline.demo import build_demo_store, find_demo_dir
 from .store import DataStore
-from .suggest import apply_choice, suggest
+from .suggest import apply_choice, suggest, typo_question
 from .vcf import looks_like_vcf
 
 DEMO_NOTICE = "Made with the 12-gene demo data: not for real results"
@@ -186,6 +186,9 @@ class Session:
         except VarShiftError as exc:
             self._say(f"{text}: could not annotate: {exc}")
             return []
+        records = self._typo_checked(text, records)
+        if records is None:
+            return []
         answer = decide(records)
         if answer.kind != "choice":
             items = [Item(answer, [answer.best])]
@@ -218,6 +221,27 @@ class Session:
             self._say(f"{option.text}: could not annotate: {exc}")
             return None
         return apply_choice(records, text, option)
+
+    def _typo_checked(self, text: str, records: list[dict]) -> list[dict] | None:
+        """It fitted only a transcript other than the default, often a typo: ask which was meant."""
+        question = typo_question(records)
+        if question is None:
+            return records
+        width = max(len(option.label) for option in question.options)
+        rows = [f"{option.label:<{width}}  {option.detail}" for option in question.options]
+        picked = self.term.choose(self.term.style(question.text, "strong"), rows)
+        if picked is None:
+            self._say(f"Skipped {text}.")
+            return None
+        option = question.options[picked[0]]
+        if option.keep:
+            return records
+        try:
+            corrected = self.annotator.annotate_text(option.text, self.build, self.gene, self.mode)
+        except VarShiftError as exc:
+            self._say(f"{option.text}: could not annotate: {exc}")
+            return None
+        return apply_choice(corrected, text, option)
 
     @staticmethod
     def _chosen(answer: Answer, record: dict) -> Item:

@@ -484,6 +484,47 @@ class ScreenAnswers(WithData):
         self.assertIn("could not annotate", first)
         self.assertIn("did you mean BRAF V600E", first)
 
+    def test_a_typo_on_the_default_transcript_is_asked_about_at_a_terminal(self):
+        # Kept as typed, it fits two DNA changes on the demo data, so the usual choice follows: answer 1.
+        for answers, key_of in ((["1"], "the default"), (["2", "1"], "as typed")):
+            with self.subTest(answers=answers):
+                terminal = ScriptedTerminal(answers=answers)
+                code, _, err = self._cli("annotate", "BRAF A600E", "build=hg19", terminal=terminal)
+                self.assertEqual(code, 0, err)
+                self.assertIn("has Val at residue 600, not Ala", terminal.output)
+                heading = next(line for line in terminal.output.splitlines() if "  ->  " in line)
+                if key_of == "the default":
+                    self.assertIn("chr7-140453136-A-T", heading)
+                    self.assertIn("chosen from the suggestions", terminal.output)
+                else:
+                    self.assertNotIn("chr7-140453136-A-T", heading)
+        terminal = ScriptedTerminal(answers=[""])
+        code, _, err = self._cli("annotate", "BRAF A600E", "build=hg19", terminal=terminal)
+        self.assertEqual(code, 1)
+        self.assertIn("Nothing annotated.", err)
+
+    def test_a_typo_on_the_default_transcript_is_a_note_in_scripts(self):
+        code, out, err = self._cli("annotate", "BRAF A600E", "build=hg19")
+        self.assertEqual(code, 0, err)
+        self.assertIn("If you meant the default transcript: BRAF V600E", out)
+        self.assertNotIn("Choose", out)
+        code, out, _ = self._cli("annotate", "BRAF A600E", "build=hg19", "format=json")
+        self.assertEqual(json.loads(out)[0]["input"]["default_transcript"]["suggestion"], "BRAF V600E")
+        listing = Path(self.folder.name) / "typo.txt"
+        listing.write_text("BRAF A600E\nBRAF V600E\n", encoding="utf-8")
+        target = Path(self.folder.name) / "typo.tsv"
+        self.assertEqual(self._cli("annotate", str(listing), "build=hg19", f"out={target}", "replace")[0], 0)
+        rows = self._rows(target)
+        typo = [row for row in rows if row["input"] == "BRAF A600E"]
+        self.assertTrue(typo and all(row["suggestion"] == "BRAF V600E" for row in typo))
+        self.assertTrue(all("default_transcript_differs" in row["flags"] for row in typo))
+        self.assertTrue(all(row["suggestion"] == "" for row in rows if row["input"] == "BRAF V600E"))
+
+    def test_a_typo_in_a_semicolon_list_on_screen_is_pointed_out(self):
+        code, out, err = self._cli("annotate", "BRAF A600E; KRAS G12D", "build=hg19")
+        self.assertEqual(code, 0, err)
+        self.assertIn("If you meant the default transcript: BRAF V600E", out)
+
     def test_a_list_file_and_a_vcf_record_the_mode(self):
         listing = Path(self.folder.name) / "modes.txt"
         listing.write_text("BRAF V600E\nNOTAGENE V600E\n", encoding="utf-8")

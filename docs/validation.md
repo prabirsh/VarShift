@@ -165,6 +165,23 @@ Run on 4 November 2026, on the full hg19 data, Python 3.12 on Windows and 3.14 o
 | `sh install.sh bin=DIR demo=no setup=no` in WSL, reading the folder PowerShell built | Each command took 1 to 2 s, and the VCF results were byte-identical to the Windows run |
 | The full unit tests | 393 passed on Windows (5 skipped) and on WSL (3 skipped) |
 
+## Phase A checks
+
+The first-run and command-line work: the guided start, one answer per description, fixing slips, suggestions, the Links sheet, modes and colour. Run on 9 November 2026, on the full hg19 data, Python 3.12.10 on Windows and 3.14.4 on WSL:
+
+| Check | Result |
+| - | - |
+| 20 examples from the spec's table of slips, through the installed `varshift annotate`, piped | All 20 read as the spec says, and reach the right variant |
+| The 7 rows of the spec's table of suggestions, piped | 6 as the spec says at first. `BRAF A600E` annotated instead, because another BRAF transcript, NM_001378475.1, has Ala at residue 600. Fixed the same day: it now asks at a terminal, and notes it elsewhere ([how](input-output.md#a-typo-that-fits-another-transcript)). Checked through a real terminal both ways: 1 gave the V600E card, and 2 kept A600E on NM_001378475.1 |
+| Each kind of suggestion, timed in a fresh process | 0.1 to 158 ms, against a limit of 300 ms. The slowest are a gene symbol with nothing one letter away (`NOTAGENE`, 107 to 158 ms) and the search for which genes have a change (`G12D`, 85 to 141 ms) |
+| `varshift annotate "BRAF V600E" build=hg19` at 100 columns | 20 lines, naming the best match and why |
+| Through a real terminal, a pseudo-terminal in WSL: a slip, a choice, and the guided start with three queries and `save` | 11 of 11 checks passed: the question, the card with `Read as`, choosing the second allele, colour, `NO_COLOR`, and a workbook with six sheets and 60 clickable links |
+| Three links from that workbook's Links sheet, opened in a browser | UniProt P15056, CIViC's BRAF V600E page, and OncoKB's BRAF V600E page. ClinVar, NCBI and UCSC show a bot check to automated browsers, so they weren't opened this way |
+| A real Windows console | VarShift saw a person there and switched colour on, and `NO_COLOR=1` turned it off. `varshift` alone opened the guided start |
+| Pipes: Command Prompt through `more`, a PowerShell pipeline, and `varshift start` piped | No escape codes, nothing waited for an answer, and `start` said it needs a terminal |
+| Existing output | The demo list and VCF outputs were byte-identical before and after each change. Old columns kept their positions, and the seven new ones come after `data_versions` |
+| The full unit tests | 604 passed on Windows (6 skipped) and on WSL (3 skipped) |
+
 ## Speed and memory
 
 See [benchmarks](benchmarks.md).
@@ -181,7 +198,8 @@ See [benchmarks](benchmarks.md).
 | GENCODE and the advanced database builders | Tested on samples of real files only. See [how much of this has been tested](data-sources.md#how-much-of-this-has-been-tested) | Run them on full files |
 | COSMIC, Census, fusions, OMIM, SpliceAI, PrimateAI | Written from documented columns, without a real file | Add your own file. It stops with a clear message if the columns differ |
 | Python 3.10, 3.11 and 3.13 | Not run yet. 3.12 has run the tests and a full hg19 setup on Windows | CI, once on GitHub |
-| Excel itself | Checked with a separate reader (openpyxl): five sheets in order, filters, frozen headers, colours and links, with no warnings. Not opened in Microsoft Excel | Open a result in Excel |
+| Excel itself | Checked with a separate reader (openpyxl): five sheets in order, filters, frozen headers, colours and links, with no warnings. The Links sheet, added since, was checked by reading the workbook's XML, and three of its links were opened. Not opened in Microsoft Excel | Open a result in Excel |
+| Typing into a Windows console | The prompts were answered through a real terminal in WSL, and a Windows console reached the prompt, but no one has typed answers into one | Try `varshift` in PowerShell |
 | HTML report | Tested in Chromium: filters, search, sort, details panel, keyboard, TSV export, light and dark, phone width. Not tested in Firefox or Safari | Open one there |
 | Link formats | See [the table](data-sources.md#reference-links); VarSome, OMIM and UCSC unconfirmed | Click them in a normal browser |
 | The weekly Windows task | A dry run reaches the register step in both forms, and the exact commands it launches were run and worked. The task itself has not been registered, since that changes your computer's schedule | Follow [the guide](updates.md) |

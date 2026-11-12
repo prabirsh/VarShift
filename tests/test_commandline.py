@@ -5,6 +5,7 @@ import errno
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,7 @@ from unittest import mock
 
 from varshift import cli, priority, updates
 from varshift.commandline import COMMANDS, parse, render_help
-from varshift.config import is_windows_mount, load_settings, resolve_data_dir, save_setting
+from varshift.config import data_dir_and_source, default_data_dir, is_windows_mount, load_settings, resolve_data_dir, save_setting
 from varshift.errors import InputError
 
 
@@ -138,11 +139,38 @@ class Config(Settings):
         self.assertIn("varshift config color=auto", str(caught.exception))
 
     def test_data_folder_order(self):
+        self.assertEqual(data_dir_and_source(), (default_data_dir(), "default"))
         save_setting("data_dir", str(self.root / "saved"))
         self.assertEqual(resolve_data_dir(), self.root / "saved")
+        self.assertEqual(data_dir_and_source()[1], "saved")
         with mock.patch.dict(os.environ, {"VARSHIFT_DATA": str(self.root / "env")}):
             self.assertEqual(resolve_data_dir(), (self.root / "env").resolve())
+            self.assertEqual(data_dir_and_source()[1], "VARSHIFT_DATA")
             self.assertEqual(resolve_data_dir(str(self.root / "given")), (self.root / "given").resolve())
+            self.assertEqual(data_dir_and_source(str(self.root / "given"))[1], "data=")
+
+    def test_config_shows_the_data_folder_in_use(self):
+        self.assertIn(f"{default_data_dir()}  (the default; none saved)", self._config()[1])
+        # Every command uses VARSHIFT_DATA when it is set, so config shows it, and says a saved folder is ignored.
+        saved, env = self.root / "saved", self.root / "env"
+        save_setting("data_dir", str(saved))
+        with mock.patch.dict(os.environ, {"VARSHIFT_DATA": str(env)}):
+            out = self._config()[1]
+            self.assertRegex(out, rf"Data folder\s+{re.escape(str(env.resolve()))}  \(from VARSHIFT_DATA\)\n")
+            self.assertRegex(out, rf"Saved data folder\s+{re.escape(str(saved))}  \(not used while VARSHIFT_DATA is set\)\n")
+            save_setting("data_dir", str(env))
+            self.assertNotIn("Saved data folder", self._config()[1])
+        self.assertRegex(self._config()[1], rf"Data folder\s+{re.escape(str(env))}\n")
+
+    @unittest.skipIf(os.name == "nt", "only WSL and Linux refuse a Windows folder")
+    def test_a_windows_folder_in_wsl_saves_nothing(self):
+        with mock.patch.dict(os.environ, {"VARSHIFT_DATA": "I:\\VIP-Annotations"}):
+            code, _, err = self._config("mode=tumour")
+        self.assertEqual(code, 1)
+        self.assertIn("/mnt/i/VIP-Annotations", err)
+        code, _, err = self._config("updates=off", "data=I:\\VIP-Annotations")
+        self.assertEqual(code, 1)
+        self.assertEqual(load_settings(), {})
 
     def test_setup_refuses_a_windows_drive_from_wsl_unless_told(self):
         windows_drive = self.root / "drive"

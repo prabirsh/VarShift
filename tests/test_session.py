@@ -73,6 +73,14 @@ class Queries(SessionTest):
         self.assertIn("chosen from the suggestions", read_as)
         self.assertEqual(self.session.items[0].answer.raw, "BRAF V600")
 
+    def test_a_typo_on_the_default_transcript_is_asked_about(self):
+        out = self.run_session("BRAF A600E", "1", "", "n")
+        self.assertIn("has Val at residue 600, not Ala", out)
+        self.assertEqual(self.session.items[0].chosen[0]["variant"]["hg19"]["key"], "chr7-140453136-A-T")
+        self.assertEqual(self.session.items[0].answer.raw, "BRAF A600E")
+        self.run_session("BRAF A600E", "2", "", "n")
+        self.assertNotEqual(self.session.items[0].chosen[0]["variant"]["hg19"]["key"], "chr7-140453136-A-T")
+
     def test_choosing_every_allele_adds_each_one(self):
         records = self.annotator.annotate_text("rs113488022", "hg19")
         self.run_session("rs113488022", "a", "", "n")
