@@ -100,5 +100,7 @@ fi
 echo
 echo "Installed. Next steps:"
 echo "  varshift setup                               choose hg19, hg38 or both, and download"
+echo "  varshift                                     the guided start: type variants, see answers, save them"
 echo "  varshift annotate \"BRAF V600E\" build=hg19    annotate a variant"
+echo "  varshift examples                            every way to write a variant"
 echo "  varshift help                                see every command"

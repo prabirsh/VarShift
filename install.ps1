@@ -109,5 +109,7 @@ if (-not $NoSetup) {
 Write-Output ''
 Write-Output 'Installed. Next steps:'
 Write-Output '  varshift setup                               choose hg19, hg38 or both, and download'
+Write-Output '  varshift                                     the guided start: type variants, see answers, save them'
 Write-Output '  varshift annotate "BRAF V600E" build=hg19    annotate a variant'
+Write-Output '  varshift examples                            every way to write a variant'
 Write-Output '  varshift help                                see every command'

@@ -31,6 +31,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Setup takes domain positions from Pfam's 2.8 MB human file, release 37.0, instead of reading the 4.7 GB file for every species, which was on course to take 12 to 14 hours on a home connection. The cost is listed in [data sources](docs/data-sources.md). The `nopfam` word is gone, since there is nothing left to skip.
 - Long downloads now print how far they have got, their speed and the time left, and long builds say once a minute that they are still going.
 - A running setup remembers its data folder, so running it again after an interruption offers the same one.
+- The next steps that `install.sh` and `install.ps1` print at the end now name the guided start, `varshift` on its own, and `varshift examples`.
 
 ### Fixed
 
